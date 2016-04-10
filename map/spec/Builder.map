@@ -1,0 +1,10 @@
+{
+  "version": 3,
+  "file": "Builder.js",
+  "sourceRoot": "../../spec",
+  "sources": [
+    "Builder.coffee"
+  ],
+  "names": [],
+  "mappings": ""
+}
