@@ -1,4 +1,6 @@
 
+require "isDev"
+
 { Null
   ArrayOf
   isType
@@ -8,12 +10,13 @@
   assertType
   validateTypes } = require "type-utils"
 
+isEnumerableKey = require "isEnumerableKey"
 NamedFunction = require "NamedFunction"
 emptyFunction = require "emptyFunction"
-isObject = require "isObject"
 define = require "define"
-isDev = require "isDev"
 sync = require "sync"
+
+ObjectLiteral = -> {}
 
 module.exports =
 Builder = NamedFunction "Builder", ->
@@ -21,14 +24,16 @@ Builder = NamedFunction "Builder", ->
   self = setType {}, Builder
 
   define self, { enumerable: no },
+    _buildResult: null
     _kind: Object
-    _typePhases: []
-    _argPhases: []
-    _getCacheID: null
     _willCreate: emptyFunction
-    _createInstance: createObjectLiteral
-    _initPhases: []
+    _createInstance: ObjectLiteral
     _didCreate: emptyFunction
+    _phases: value: {
+      build: []
+      initType: []
+      initInstance: []
+    }
 
   return self
 
@@ -40,86 +45,74 @@ define Builder.prototype,
       createInstance.apply null, args
     return
 
-  fromCache: (getCacheID) ->
-    assertType getCacheID, Function
-    @_getCacheID = getCacheID
-    @_typePhases.push (type) ->
-      type.cache = Object.create null
-    return
-
-  createArguments: (createArguments) ->
-    assertType createArguments, Function
-    @_argPhases.push createArguments
-    return
-
   defineProperties: (props) ->
     assertType props, Object
-    @_initPhases.push ->
+    @_phases.initInstance.push ->
       for key, prop of props
         if isDev and (prop.enumerable is undefined)
-          prop.enumerable = isEnumerable key
+          prop.enumerable = isEnumerableKey key
         define this, key, prop
       return
     return
 
   definePrototype: (prototype) ->
     assertType prototype, Object
-    @_typePhases.push (type) ->
+    @_phases.initType.push (type) ->
       for key, value of prototype
-        if isEnumerable key then type.prototype[key] = value
+        if isEnumerableKey key then type.prototype[key] = value
         else define type.prototype, key, { value, enumerable: no }
       return
     return
 
   defineStatics: (statics) ->
     assertType statics, Object
-    @_typePhases.push (type) ->
+    @_phases.initType.push (type) ->
       for key, prop of statics
         assertType prop, Object, "statics." + key
         if isDev and (prop.enumerable is undefined)
-          prop.enumerable = isEnumerable key
+          prop.enumerable = isEnumerableKey key
         define type, key, prop
       return
     return
 
   createValues: (createValues) ->
     assertType createValues, Function
-    @_initPhases.push (args) ->
+    @_phases.initInstance.push (args) ->
       values = createValues.apply this, args
-      assert (isObject values), "'createValues' must return an Object!"
+      assert (isType values, Object), "'createValues' must return an Object!"
       for key, value of values
         continue if value is undefined
-        if isEnumerable key then this[key] = value
+        if isEnumerableKey key then this[key] = value
         else define this, key, { value, enumerable: no }
       return
     return
 
   createFrozenValues: (createFrozenValues) ->
     assertType createFrozenValues, Function
-    @_initPhases.push (args) ->
+    @_phases.initInstance.push (args) ->
       values = createFrozenValues.apply this, args
-      assert (isObject values), "'createFrozenValues' must return an Object!"
+      assert (isType values, Object), "'createFrozenValues' must return an Object!"
       for key, value of values
         continue if value is undefined
-        if isDev then define this, key, { value, frozen: yes, enumerable: isEnumerable key }
+        if isDev then define this, key, { value, frozen: yes, enumerable: isEnumerableKey key }
         else this[key] = value
       return
     return
 
   createReactiveValues: (createReactiveValues) ->
     assertType createReactiveValues, Function
-    @_initPhases.push (args) ->
+    @_phases.initInstance.push (args) ->
       values = createReactiveValues.apply this, args
-      assert (isObject values), "'createReactiveValues' must return an Object!"
+      assert (isType values, Object), "'createReactiveValues' must return an Object!"
       for key, value of values
         continue if value is undefined
-        define this, key, { value, reactive: yes, enumerable: isEnumerable key }
+        define this, key, { value, reactive: yes, enumerable: isEnumerableKey key }
       return
     return
 
   bindMethods: (keys) ->
     assert (isType keys, ArrayOf String), "'bindMethods' must be passed an array of strings!"
-    @_initPhases.push ->
+    @_phases.initInstance.push ->
       sync.each keys, (key) =>
         value = this[key]
         assertType value, Function, { key: @constructor.name + "." + key, instance: this }
@@ -128,10 +121,18 @@ define Builder.prototype,
 
   exposeGetters: (keys) ->
     assert (isType keys, ArrayOf String), "'exposeGetters' must be passed an array of strings!"
-    @_initPhases.push ->
+    @_phases.initInstance.push ->
       sync.each keys, (key) =>
         internalKey = "_" + key
         define this, key, get: -> this[internalKey]
+    return
+
+  exposeLazyGetters: (keys) ->
+    assert (isType keys, ArrayOf String), "'exposeGetters' must be passed an array of strings!"
+    @_phases.initInstance.push ->
+      sync.each keys, (key) =>
+        internalKey = "_" + key
+        define this, key, get: -> this[internalKey].get()
     return
 
   addMixins: (mixins) ->
@@ -142,94 +143,63 @@ define Builder.prototype,
 
   init: (init) ->
     assertType init, Function
-    @_initPhases.push (args) ->
+    @_phases.initInstance.push (args) ->
       init.apply this, args
     return
 
   build: ->
 
-    initArgs = @__initArgs @_argPhases
-    getCacheId = @_getCacheID
-    willCreate = @_willCreate
-    createInstance = @_createInstance
-    initInstance = @__initInstance @_initPhases
-    didCreate = @_didCreate
+    if @_buildResult
+      return @_buildResult
 
-    type = @__createType ->
+    if @_phases.build.length
+      for phase in @_phases.build
+        phase.call this
 
-      # Initialize the arguments.
-      args = initArgs arguments
-
-      # Use an existing instance if possible.
-      if getCacheId
-        self = getCacheId.apply null, args
-        return self if self isnt undefined
-
-      # Allow custom logic before instance creation.
-      willCreate.call null, type, args
-
-      # Construct the base object.
-      self = createInstance.apply null, args
-
-      # Initialize the instance.
-      initInstance self, args
-
-      # Allow custom logic after instance creation.
-      didCreate.call self, type, args
-
-      return self
-
-    @__initType type, @_typePhases
-
-    return type
+    transformArgs = @__createArgTransformer()
+    constructor = @__createConstructor()
+    type = @__createType -> constructor type, transformArgs arguments
+    @__initType type
+    return @_buildResult = type
 
 define Builder.prototype, { enumerable: no },
-
-  __initArgs: (argPhases) ->
-
-    if argPhases.length is 0
-      return emptyFunction.thatReturnsArgument
-
-    return (initialArgs) ->
-      args = [] # The 'initialArgs' should not be leaked.
-      args.push arg for arg in initialArgs
-      for runPhase in argPhases
-        args = runPhase args
-      return args
-
-  __initInstance: (initPhases) ->
-
-    if initPhases.length is 0
-      return emptyFunction
-
-    return (self, args) ->
-      for runPhase in initPhases
-        runPhase.apply self, args
-      return
 
   __createType: (type) ->
     setKind type, @_kind
     return type
 
-  __initType: (type, typePhases) ->
-    return if typePhases.length is 0
-    runPhase type for runPhase in typePhases
+  __initType: (type) ->
+    phases = @_phases.initType
+    if phases.length
+      for phase in phases
+        phase.call null, type
     return
 
-#
-# Helpers
-#
+  __createArgTransformer: ->
+    emptyFunction.thatReturnsArgument
 
-if isDev then isEnumerable = (key) -> key[0] isnt "_"
-else isEnumerable = emptyFunction.thatReturnsTrue
+  __createConstructor: ->
 
-createObjectLiteral = -> {}
+    willCreate = @_willCreate
+    createInstance = @_createInstance
+    initInstance = @__createInitializer()
+    didCreate = @_didCreate
 
-mergeDefaults = (options, optionDefaults) ->
-  for key, defaultValue of optionDefaults
-    if isObject defaultValue
-      options[key] = {} if options[key] is undefined
-      options[key] = mergeDefaults options[key], defaultValue
-    else if options[key] is undefined
-      options[key] = defaultValue
-  return
+    return (type, args) ->
+      willCreate.call null, type, args
+      self = createInstance.apply null, args
+      initInstance self, args
+      didCreate.call self, type, args
+      return self
+
+  __createInitializer: ->
+
+    phases = @_phases.initInstance
+
+    if phases.length is 0
+      return emptyFunction
+
+    return (self, args) ->
+      for phase in phases
+        phase.call self, args
+      return

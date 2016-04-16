@@ -1,18 +1,22 @@
-var ArrayOf, Builder, NamedFunction, Null, assert, assertType, createObjectLiteral, define, emptyFunction, isDev, isEnumerable, isObject, isType, mergeDefaults, ref, setKind, setType, sync, validateTypes;
+var ArrayOf, Builder, NamedFunction, Null, ObjectLiteral, assert, assertType, define, emptyFunction, isEnumerableKey, isType, ref, setKind, setType, sync, validateTypes;
+
+require("isDev");
 
 ref = require("type-utils"), Null = ref.Null, ArrayOf = ref.ArrayOf, isType = ref.isType, setType = ref.setType, setKind = ref.setKind, assert = ref.assert, assertType = ref.assertType, validateTypes = ref.validateTypes;
+
+isEnumerableKey = require("isEnumerableKey");
 
 NamedFunction = require("NamedFunction");
 
 emptyFunction = require("emptyFunction");
 
-isObject = require("isObject");
-
 define = require("define");
 
-isDev = require("isDev");
-
 sync = require("sync");
+
+ObjectLiteral = function() {
+  return {};
+};
 
 module.exports = Builder = NamedFunction("Builder", function() {
   var self;
@@ -20,14 +24,18 @@ module.exports = Builder = NamedFunction("Builder", function() {
   define(self, {
     enumerable: false
   }, {
+    _buildResult: null,
     _kind: Object,
-    _typePhases: [],
-    _argPhases: [],
-    _getCacheID: null,
     _willCreate: emptyFunction,
-    _createInstance: createObjectLiteral,
-    _initPhases: [],
-    _didCreate: emptyFunction
+    _createInstance: ObjectLiteral,
+    _didCreate: emptyFunction,
+    _phases: {
+      value: {
+        build: [],
+        initType: [],
+        initInstance: []
+      }
+    }
   });
   return self;
 });
@@ -39,25 +47,14 @@ define(Builder.prototype, {
       return createInstance.apply(null, args);
     };
   },
-  fromCache: function(getCacheID) {
-    assertType(getCacheID, Function);
-    this._getCacheID = getCacheID;
-    this._typePhases.push(function(type) {
-      return type.cache = Object.create(null);
-    });
-  },
-  createArguments: function(createArguments) {
-    assertType(createArguments, Function);
-    this._argPhases.push(createArguments);
-  },
   defineProperties: function(props) {
     assertType(props, Object);
-    this._initPhases.push(function() {
+    this._phases.initInstance.push(function() {
       var key, prop;
       for (key in props) {
         prop = props[key];
         if (isDev && (prop.enumerable === void 0)) {
-          prop.enumerable = isEnumerable(key);
+          prop.enumerable = isEnumerableKey(key);
         }
         define(this, key, prop);
       }
@@ -65,11 +62,11 @@ define(Builder.prototype, {
   },
   definePrototype: function(prototype) {
     assertType(prototype, Object);
-    this._typePhases.push(function(type) {
+    this._phases.initType.push(function(type) {
       var key, value;
       for (key in prototype) {
         value = prototype[key];
-        if (isEnumerable(key)) {
+        if (isEnumerableKey(key)) {
           type.prototype[key] = value;
         } else {
           define(type.prototype, key, {
@@ -82,13 +79,13 @@ define(Builder.prototype, {
   },
   defineStatics: function(statics) {
     assertType(statics, Object);
-    this._typePhases.push(function(type) {
+    this._phases.initType.push(function(type) {
       var key, prop;
       for (key in statics) {
         prop = statics[key];
         assertType(prop, Object, "statics." + key);
         if (isDev && (prop.enumerable === void 0)) {
-          prop.enumerable = isEnumerable(key);
+          prop.enumerable = isEnumerableKey(key);
         }
         define(type, key, prop);
       }
@@ -96,16 +93,16 @@ define(Builder.prototype, {
   },
   createValues: function(createValues) {
     assertType(createValues, Function);
-    this._initPhases.push(function(args) {
+    this._phases.initInstance.push(function(args) {
       var key, value, values;
       values = createValues.apply(this, args);
-      assert(isObject(values), "'createValues' must return an Object!");
+      assert(isType(values, Object), "'createValues' must return an Object!");
       for (key in values) {
         value = values[key];
         if (value === void 0) {
           continue;
         }
-        if (isEnumerable(key)) {
+        if (isEnumerableKey(key)) {
           this[key] = value;
         } else {
           define(this, key, {
@@ -118,10 +115,10 @@ define(Builder.prototype, {
   },
   createFrozenValues: function(createFrozenValues) {
     assertType(createFrozenValues, Function);
-    this._initPhases.push(function(args) {
+    this._phases.initInstance.push(function(args) {
       var key, value, values;
       values = createFrozenValues.apply(this, args);
-      assert(isObject(values), "'createFrozenValues' must return an Object!");
+      assert(isType(values, Object), "'createFrozenValues' must return an Object!");
       for (key in values) {
         value = values[key];
         if (value === void 0) {
@@ -131,7 +128,7 @@ define(Builder.prototype, {
           define(this, key, {
             value: value,
             frozen: true,
-            enumerable: isEnumerable(key)
+            enumerable: isEnumerableKey(key)
           });
         } else {
           this[key] = value;
@@ -141,10 +138,10 @@ define(Builder.prototype, {
   },
   createReactiveValues: function(createReactiveValues) {
     assertType(createReactiveValues, Function);
-    this._initPhases.push(function(args) {
+    this._phases.initInstance.push(function(args) {
       var key, value, values;
       values = createReactiveValues.apply(this, args);
-      assert(isObject(values), "'createReactiveValues' must return an Object!");
+      assert(isType(values, Object), "'createReactiveValues' must return an Object!");
       for (key in values) {
         value = values[key];
         if (value === void 0) {
@@ -153,14 +150,14 @@ define(Builder.prototype, {
         define(this, key, {
           value: value,
           reactive: true,
-          enumerable: isEnumerable(key)
+          enumerable: isEnumerableKey(key)
         });
       }
     });
   },
   bindMethods: function(keys) {
     assert(isType(keys, ArrayOf(String)), "'bindMethods' must be passed an array of strings!");
-    this._initPhases.push(function() {
+    this._phases.initInstance.push(function() {
       return sync.each(keys, (function(_this) {
         return function(key) {
           var value;
@@ -178,7 +175,7 @@ define(Builder.prototype, {
   },
   exposeGetters: function(keys) {
     assert(isType(keys, ArrayOf(String)), "'exposeGetters' must be passed an array of strings!");
-    this._initPhases.push(function() {
+    this._phases.initInstance.push(function() {
       return sync.each(keys, (function(_this) {
         return function(key) {
           var internalKey;
@@ -186,6 +183,22 @@ define(Builder.prototype, {
           return define(_this, key, {
             get: function() {
               return this[internalKey];
+            }
+          });
+        };
+      })(this));
+    });
+  },
+  exposeLazyGetters: function(keys) {
+    assert(isType(keys, ArrayOf(String)), "'exposeGetters' must be passed an array of strings!");
+    this._phases.initInstance.push(function() {
+      return sync.each(keys, (function(_this) {
+        return function(key) {
+          var internalKey;
+          internalKey = "_" + key;
+          return define(_this, key, {
+            get: function() {
+              return this[internalKey].get();
             }
           });
         };
@@ -202,112 +215,81 @@ define(Builder.prototype, {
   },
   init: function(init) {
     assertType(init, Function);
-    this._initPhases.push(function(args) {
+    this._phases.initInstance.push(function(args) {
       return init.apply(this, args);
     });
   },
   build: function() {
-    var createInstance, didCreate, getCacheId, initArgs, initInstance, type, willCreate;
-    initArgs = this.__initArgs(this._argPhases);
-    getCacheId = this._getCacheID;
-    willCreate = this._willCreate;
-    createInstance = this._createInstance;
-    initInstance = this.__initInstance(this._initPhases);
-    didCreate = this._didCreate;
-    type = this.__createType(function() {
-      var args, self;
-      args = initArgs(arguments);
-      if (getCacheId) {
-        self = getCacheId.apply(null, args);
-        if (self !== void 0) {
-          return self;
-        }
+    var constructor, i, len, phase, ref1, transformArgs, type;
+    if (this._buildResult) {
+      return this._buildResult;
+    }
+    if (this._phases.build.length) {
+      ref1 = this._phases.build;
+      for (i = 0, len = ref1.length; i < len; i++) {
+        phase = ref1[i];
+        phase.call(this);
       }
-      willCreate.call(null, type, args);
-      self = createInstance.apply(null, args);
-      initInstance(self, args);
-      didCreate.call(self, type, args);
-      return self;
+    }
+    transformArgs = this.__createArgTransformer();
+    constructor = this.__createConstructor();
+    type = this.__createType(function() {
+      return constructor(type, transformArgs(arguments));
     });
-    this.__initType(type, this._typePhases);
-    return type;
+    this.__initType(type);
+    return this._buildResult = type;
   }
 });
 
 define(Builder.prototype, {
   enumerable: false
 }, {
-  __initArgs: function(argPhases) {
-    if (argPhases.length === 0) {
-      return emptyFunction.thatReturnsArgument;
-    }
-    return function(initialArgs) {
-      var arg, args, i, j, len, len1, runPhase;
-      args = [];
-      for (i = 0, len = initialArgs.length; i < len; i++) {
-        arg = initialArgs[i];
-        args.push(arg);
-      }
-      for (j = 0, len1 = argPhases.length; j < len1; j++) {
-        runPhase = argPhases[j];
-        args = runPhase(args);
-      }
-      return args;
-    };
-  },
-  __initInstance: function(initPhases) {
-    if (initPhases.length === 0) {
-      return emptyFunction;
-    }
-    return function(self, args) {
-      var i, len, runPhase;
-      for (i = 0, len = initPhases.length; i < len; i++) {
-        runPhase = initPhases[i];
-        runPhase.apply(self, args);
-      }
-    };
-  },
   __createType: function(type) {
     setKind(type, this._kind);
     return type;
   },
-  __initType: function(type, typePhases) {
-    var i, len, runPhase;
-    if (typePhases.length === 0) {
-      return;
+  __initType: function(type) {
+    var i, len, phase, phases;
+    phases = this._phases.initType;
+    if (phases.length) {
+      for (i = 0, len = phases.length; i < len; i++) {
+        phase = phases[i];
+        phase.call(null, type);
+      }
     }
-    for (i = 0, len = typePhases.length; i < len; i++) {
-      runPhase = typePhases[i];
-      runPhase(type);
+  },
+  __createArgTransformer: function() {
+    return emptyFunction.thatReturnsArgument;
+  },
+  __createConstructor: function() {
+    var createInstance, didCreate, initInstance, willCreate;
+    willCreate = this._willCreate;
+    createInstance = this._createInstance;
+    initInstance = this.__createInitializer();
+    didCreate = this._didCreate;
+    return function(type, args) {
+      var self;
+      willCreate.call(null, type, args);
+      self = createInstance.apply(null, args);
+      initInstance(self, args);
+      didCreate.call(self, type, args);
+      return self;
+    };
+  },
+  __createInitializer: function() {
+    var phases;
+    phases = this._phases.initInstance;
+    if (phases.length === 0) {
+      return emptyFunction;
     }
+    return function(self, args) {
+      var i, len, phase;
+      for (i = 0, len = phases.length; i < len; i++) {
+        phase = phases[i];
+        phase.call(self, args);
+      }
+    };
   }
 });
-
-if (isDev) {
-  isEnumerable = function(key) {
-    return key[0] !== "_";
-  };
-} else {
-  isEnumerable = emptyFunction.thatReturnsTrue;
-}
-
-createObjectLiteral = function() {
-  return {};
-};
-
-mergeDefaults = function(options, optionDefaults) {
-  var defaultValue, key;
-  for (key in optionDefaults) {
-    defaultValue = optionDefaults[key];
-    if (isObject(defaultValue)) {
-      if (options[key] === void 0) {
-        options[key] = {};
-      }
-      options[key] = mergeDefaults(options[key], defaultValue);
-    } else if (options[key] === void 0) {
-      options[key] = defaultValue;
-    }
-  }
-};
 
 //# sourceMappingURL=../../map/src/Builder.map
