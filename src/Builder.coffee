@@ -16,7 +16,9 @@ emptyFunction = require "emptyFunction"
 define = require "define"
 sync = require "sync"
 
-ObjectLiteral = -> {}
+defaultValues =
+  createInstance: -> {}
+  didCreate: (type) -> setType this, type
 
 module.exports =
 Builder = NamedFunction "Builder", ->
@@ -27,8 +29,8 @@ Builder = NamedFunction "Builder", ->
     _buildResult: null
     _kind: Object
     _willCreate: emptyFunction
-    _createInstance: ObjectLiteral
-    _didCreate: emptyFunction
+    _createInstance: defaultValues.createInstance
+    _didCreate: defaultValues.didCreate
     _phases: value: {
       build: []
       initType: []
@@ -68,7 +70,7 @@ define Builder.prototype,
     assertType statics, Object
     @_phases.initType.push (type) ->
       for key, prop of statics
-        assertType prop, Object, "statics." + key
+        prop = { value: prop } unless isType prop, Object
         if isDev and (prop.enumerable is undefined)
           prop.enumerable = isEnumerableKey key
         define type, key, prop
@@ -138,7 +140,7 @@ define Builder.prototype,
   addMixins: (mixins) ->
     assertType mixins, Array
     for mixin in mixins
-      mixin.call this
+      mixin this
     return
 
   init: (init) ->
@@ -157,23 +159,17 @@ define Builder.prototype,
         phase.call this
 
     transformArgs = @__createArgTransformer()
-    constructor = @__createConstructor()
-    type = @__createType -> constructor type, transformArgs arguments
+    constructType = @__createConstructor()
+
+    type = @__createType ->
+      constructType type, transformArgs arguments
+
     @__initType type
-    return @_buildResult = type
 
-define Builder.prototype, { enumerable: no },
-
-  __createType: (type) ->
-    setKind type, @_kind
+    @_buildResult = type
     return type
 
-  __initType: (type) ->
-    phases = @_phases.initType
-    if phases.length
-      for phase in phases
-        phase.call null, type
-    return
+define Builder.prototype, { enumerable: no },
 
   __createArgTransformer: ->
     emptyFunction.thatReturnsArgument
@@ -187,9 +183,9 @@ define Builder.prototype, { enumerable: no },
 
     return (type, args) ->
       willCreate.call null, type, args
-      self = createInstance.apply null, args
-      initInstance self, args
+      self = createInstance.call null, args
       didCreate.call self, type, args
+      initInstance self, args
       return self
 
   __createInitializer: ->
@@ -203,3 +199,14 @@ define Builder.prototype, { enumerable: no },
       for phase in phases
         phase.call self, args
       return
+
+  __createType: (type) ->
+    setKind type, @_kind
+    return type
+
+  __initType: (type) ->
+    phases = @_phases.initType
+    if phases.length
+      for phase in phases
+        phase.call null, type
+    return

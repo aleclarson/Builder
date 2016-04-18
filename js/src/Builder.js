@@ -1,4 +1,4 @@
-var ArrayOf, Builder, NamedFunction, Null, ObjectLiteral, assert, assertType, define, emptyFunction, isEnumerableKey, isType, ref, setKind, setType, sync, validateTypes;
+var ArrayOf, Builder, NamedFunction, Null, assert, assertType, defaultValues, define, emptyFunction, isEnumerableKey, isType, ref, setKind, setType, sync, validateTypes;
 
 require("isDev");
 
@@ -14,8 +14,13 @@ define = require("define");
 
 sync = require("sync");
 
-ObjectLiteral = function() {
-  return {};
+defaultValues = {
+  createInstance: function() {
+    return {};
+  },
+  didCreate: function(type) {
+    return setType(this, type);
+  }
 };
 
 module.exports = Builder = NamedFunction("Builder", function() {
@@ -27,8 +32,8 @@ module.exports = Builder = NamedFunction("Builder", function() {
     _buildResult: null,
     _kind: Object,
     _willCreate: emptyFunction,
-    _createInstance: ObjectLiteral,
-    _didCreate: emptyFunction,
+    _createInstance: defaultValues.createInstance,
+    _didCreate: defaultValues.didCreate,
     _phases: {
       value: {
         build: [],
@@ -83,7 +88,11 @@ define(Builder.prototype, {
       var key, prop;
       for (key in statics) {
         prop = statics[key];
-        assertType(prop, Object, "statics." + key);
+        if (!isType(prop, Object)) {
+          prop = {
+            value: prop
+          };
+        }
         if (isDev && (prop.enumerable === void 0)) {
           prop.enumerable = isEnumerableKey(key);
         }
@@ -210,7 +219,7 @@ define(Builder.prototype, {
     assertType(mixins, Array);
     for (i = 0, len = mixins.length; i < len; i++) {
       mixin = mixins[i];
-      mixin.call(this);
+      mixin(this);
     }
   },
   init: function(init) {
@@ -220,7 +229,7 @@ define(Builder.prototype, {
     });
   },
   build: function() {
-    var constructor, i, len, phase, ref1, transformArgs, type;
+    var constructType, i, len, phase, ref1, transformArgs, type;
     if (this._buildResult) {
       return this._buildResult;
     }
@@ -232,32 +241,19 @@ define(Builder.prototype, {
       }
     }
     transformArgs = this.__createArgTransformer();
-    constructor = this.__createConstructor();
+    constructType = this.__createConstructor();
     type = this.__createType(function() {
-      return constructor(type, transformArgs(arguments));
+      return constructType(type, transformArgs(arguments));
     });
     this.__initType(type);
-    return this._buildResult = type;
+    this._buildResult = type;
+    return type;
   }
 });
 
 define(Builder.prototype, {
   enumerable: false
 }, {
-  __createType: function(type) {
-    setKind(type, this._kind);
-    return type;
-  },
-  __initType: function(type) {
-    var i, len, phase, phases;
-    phases = this._phases.initType;
-    if (phases.length) {
-      for (i = 0, len = phases.length; i < len; i++) {
-        phase = phases[i];
-        phase.call(null, type);
-      }
-    }
-  },
   __createArgTransformer: function() {
     return emptyFunction.thatReturnsArgument;
   },
@@ -270,9 +266,9 @@ define(Builder.prototype, {
     return function(type, args) {
       var self;
       willCreate.call(null, type, args);
-      self = createInstance.apply(null, args);
-      initInstance(self, args);
+      self = createInstance.call(null, args);
       didCreate.call(self, type, args);
+      initInstance(self, args);
       return self;
     };
   },
@@ -289,6 +285,20 @@ define(Builder.prototype, {
         phase.call(self, args);
       }
     };
+  },
+  __createType: function(type) {
+    setKind(type, this._kind);
+    return type;
+  },
+  __initType: function(type) {
+    var i, len, phase, phases;
+    phases = this._phases.initType;
+    if (phases.length) {
+      for (i = 0, len = phases.length; i < len; i++) {
+        phase = phases[i];
+        phase.call(null, type);
+      }
+    }
   }
 });
 
