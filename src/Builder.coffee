@@ -10,149 +10,41 @@ require "isDev"
   assertType
   validateTypes } = require "type-utils"
 
-isEnumerableKey = require "isEnumerableKey"
 NamedFunction = require "NamedFunction"
 emptyFunction = require "emptyFunction"
+Property = require "Property"
 define = require "define"
 sync = require "sync"
 
-defaultValues =
-  createInstance: -> {}
-  didCreate: (type) -> setType this, type
-
 module.exports =
 Builder = NamedFunction "Builder", ->
-
   self = setType {}, Builder
-
-  define self, { enumerable: no },
-    _buildResult: null
-    _kind: Object
-    _willCreate: emptyFunction
-    _createInstance: defaultValues.createInstance
-    _didCreate: defaultValues.didCreate
-    _phases: value: {
-      build: []
-      initType: []
-      initInstance: []
-    }
-
+  Builder.props.define self
   return self
+
+Builder.props = Property.Map
+
+  _cachedBuild: null
+
+  _kind: value: Object
+
+  _willCreate: value: emptyFunction
+
+  _createInstance: value: -> {}
+
+  _didCreate: value: (type) -> setType this, type
+
+  _phases: ->
+    build: []
+    initType: []
+    initInstance: []
 
 define Builder.prototype,
 
-  createInstance: (createInstance) ->
-    assertType createInstance, Function
-    @_createInstance = (args) ->
-      createInstance.apply null, args
-    return
-
-  defineProperties: (props) ->
-    assertType props, Object
-    @_phases.initInstance.push ->
-      for key, prop of props
-        if isDev and (prop.enumerable is undefined)
-          prop.enumerable = isEnumerableKey key
-        define this, key, prop
-      return
-    return
-
-  definePrototype: (prototype) ->
-    assertType prototype, Object
-    @_phases.initType.push (type) ->
-      for key, value of prototype
-        if isEnumerableKey key then type.prototype[key] = value
-        else define type.prototype, key, { value, enumerable: no }
-      return
-    return
-
-  defineStatics: (statics) ->
-    assertType statics, Object
-    @_phases.initType.push (type) ->
-      for key, prop of statics
-        prop = { value: prop } unless isType prop, Object
-        if isDev and (prop.enumerable is undefined)
-          prop.enumerable = isEnumerableKey key
-        define type, key, prop
-      return
-    return
-
-  createValues: (createValues) ->
-    assertType createValues, Function
-    @_phases.initInstance.push (args) ->
-      values = createValues.apply this, args
-      assert (isType values, Object), "'createValues' must return an Object!"
-      for key, value of values
-        continue if value is undefined
-        if isEnumerableKey key then this[key] = value
-        else define this, key, { value, enumerable: no }
-      return
-    return
-
-  createFrozenValues: (createFrozenValues) ->
-    assertType createFrozenValues, Function
-    @_phases.initInstance.push (args) ->
-      values = createFrozenValues.apply this, args
-      assert (isType values, Object), "'createFrozenValues' must return an Object!"
-      for key, value of values
-        continue if value is undefined
-        if isDev then define this, key, { value, frozen: yes, enumerable: isEnumerableKey key }
-        else this[key] = value
-      return
-    return
-
-  createReactiveValues: (createReactiveValues) ->
-    assertType createReactiveValues, Function
-    @_phases.initInstance.push (args) ->
-      values = createReactiveValues.apply this, args
-      assert (isType values, Object), "'createReactiveValues' must return an Object!"
-      for key, value of values
-        continue if value is undefined
-        define this, key, { value, reactive: yes, enumerable: isEnumerableKey key }
-      return
-    return
-
-  bindMethods: (keys) ->
-    assert (isType keys, ArrayOf String), "'bindMethods' must be passed an array of strings!"
-    @_phases.initInstance.push ->
-      sync.each keys, (key) =>
-        value = this[key]
-        assertType value, Function, { key: @constructor.name + "." + key, instance: this }
-        this[key] = => value.apply this, arguments
-    return
-
-  exposeGetters: (keys) ->
-    assert (isType keys, ArrayOf String), "'exposeGetters' must be passed an array of strings!"
-    @_phases.initInstance.push ->
-      sync.each keys, (key) =>
-        internalKey = "_" + key
-        define this, key, get: -> this[internalKey]
-    return
-
-  exposeLazyGetters: (keys) ->
-    assert (isType keys, ArrayOf String), "'exposeGetters' must be passed an array of strings!"
-    @_phases.initInstance.push ->
-      sync.each keys, (key) =>
-        internalKey = "_" + key
-        define this, key, get: -> this[internalKey].get()
-    return
-
-  addMixins: (mixins) ->
-    assertType mixins, Array
-    for mixin in mixins
-      mixin this
-    return
-
-  init: (init) ->
-    assertType init, Function
-    @_phases.initInstance.push (args) ->
-      init.apply this, args
-    return
-
   build: ->
 
-    if @_buildResult
-      return @_buildResult
+    if @_cachedBuild
+      return @_cachedBuild
 
     if @_phases.build.length
       for phase in @_phases.build
@@ -166,10 +58,148 @@ define Builder.prototype,
 
     @__initType type
 
-    @_buildResult = type
+    @_cachedBuild = type
     return type
 
-define Builder.prototype, { enumerable: no },
+  addMixins: (mixins) ->
+    assertType mixins, Array
+    for mixin in mixins
+      mixin this
+    return
+
+  createInstance: (createInstance) ->
+    assertType createInstance, Function
+    @_createInstance = (args) ->
+      createInstance.apply null, args
+    return
+
+  init: (init) ->
+    assertType init, Function
+    @_phases.initInstance.push (args) ->
+      init.apply this, args
+    return
+
+# This allows for defining values (a) with one function that returns
+# a property map or (b) with a property map of constant values & value creators.
+createValueDefiner = (options) -> (createValues) ->
+
+  prop = Property options
+
+  if isType createValues, Function
+    @_phases.initInstance.push (args) ->
+      values = createValues.apply this, args
+      assertType values, Object
+      for key, value of values
+        prop.define this, key, value
+      return
+    return
+
+  assertType createValues, Object
+  @_phases.initInstance.push (args) ->
+    for key, value of createValues
+      if isType value, Function
+        if value.length
+          prop.define this, key, value.apply this, args
+        else prop.define this, key, value.call this
+      else prop.define this, key, value
+    return
+  return
+
+define Builder.prototype,
+
+  defineValues: createValueDefiner { needsValue: yes }
+
+  defineFrozenValues: createValueDefiner { frozen: yes, needsValue: yes }
+
+  defineReactiveValues: createValueDefiner { reactive: yes, needsValue: yes }
+
+  defineProperties: (props) ->
+
+    assertType props, Object
+
+    props = sync.map props, Property
+
+    @_phases.initInstance.push ->
+      for key, prop of props
+        prop.define this, key
+      return
+    return
+
+  defineMethods: (methods) ->
+
+    assertType methods, Object
+
+    props = sync.map methods, (value, key) ->
+      assertType value, Function, key
+      Property { value }
+
+    @_phases.initType.push (type) ->
+      for key, prop of props
+        prop.define type.prototype, key
+      return
+    return
+
+  defineStatics: (statics) ->
+
+    assertType statics, Object
+
+    props = sync.map statics, (options, key) ->
+
+      unless isType options, Object
+        options = { value: options }
+
+      Property options
+
+    @_phases.initType.push (type) ->
+      for key, prop of props
+        prop.define type, key
+      return
+    return
+
+  bindMethods: (keys) ->
+    assert (isType keys, ArrayOf String), "'bindMethods' must be passed an array of strings!"
+    @_phases.initInstance.push ->
+      sync.each keys, (key) =>
+        method = this[key]
+        assertType method, Function, key
+        this[key] = => method.apply this, arguments
+    return
+
+  exposeGetters: (keys) ->
+
+    assertType keys, Array
+
+    props = {}
+    sync.each keys, (key) ->
+      internalKey = "_" + key
+      props[key] = Property
+        get: -> this[internalKey]
+        enumerable: yes
+
+    @_phases.initInstance.push ->
+      for key, prop of props
+        prop.define this, key
+      return
+    return
+
+  exposeLazyGetters: (keys) ->
+
+    assertType keys, Array
+
+    props = {}
+    sync.each keys, (key) ->
+      internalKey = "_" + key
+      props[key] = Property
+        get: -> this[internalKey].get()
+        enumerable: yes
+
+    @_phases.initInstance.push ->
+      for key, prop of props
+        prop.define this, key
+      return
+    return
+
+define Builder.prototype,
 
   __createArgTransformer: ->
     emptyFunction.thatReturnsArgument

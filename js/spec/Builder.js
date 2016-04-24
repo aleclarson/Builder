@@ -59,11 +59,11 @@ describe("Builder.prototype", function() {
       return expect(foo.test).toBe(1);
     });
   });
-  describe("definePrototype()", function() {
+  describe("defineMethods()", function() {
     return it("adds values to the 'prototype'", function() {
       var Foo, type;
       type = Builder();
-      type.definePrototype({
+      type.defineMethods({
         test: emptyFunction
       });
       Foo = type.build();
@@ -81,11 +81,11 @@ describe("Builder.prototype", function() {
       return expect(Foo.test).toBe(emptyFunction);
     });
   });
-  describe("createValues()", function() {
+  describe("defineValues()", function() {
     return it("adds writable values to each instance", function() {
       var Foo, foo, type;
       type = Builder();
-      type.createValues(function() {
+      type.defineValues(function() {
         return {
           test: 1
         };
@@ -97,11 +97,11 @@ describe("Builder.prototype", function() {
       return expect(foo.test).toBe(2);
     });
   });
-  describe("createFrozenValues()", function() {
+  describe("defineFrozenValues()", function() {
     return it("adds frozen values to each instance", function() {
       var Foo, foo, type;
       type = Builder();
-      type.createFrozenValues(function() {
+      type.defineFrozenValues(function() {
         return {
           test: 1
         };
@@ -111,12 +111,12 @@ describe("Builder.prototype", function() {
       return expect(foo.test).toBe(1);
     });
   });
-  describe("createReactiveValues()", function() {
+  describe("defineReactiveValues()", function() {
     return it("adds reactive values to each instance", function() {
       var Foo, Tracker, computation, foo, spy, type;
       Tracker = require("tracker");
       type = Builder();
-      type.createReactiveValues(function() {
+      type.defineReactiveValues(function() {
         return {
           test: 1
         };
@@ -140,7 +140,7 @@ describe("Builder.prototype", function() {
     return it("binds a method to each instance", function() {
       var Foo, foo, test, type;
       type = Builder();
-      type.definePrototype({
+      type.defineMethods({
         test: function() {
           return this;
         }
@@ -158,7 +158,7 @@ describe("Builder.prototype", function() {
     return it("creates a getter for a hidden key", function() {
       var Foo, foo, type;
       type = Builder();
-      type.createValues(function() {
+      type.defineValues(function() {
         return {
           _test: 1
         };
@@ -177,7 +177,7 @@ describe("Builder.prototype", function() {
       var Foo, LazyVar, foo, type;
       LazyVar = require("lazy-var");
       type = Builder();
-      type.createValues(function() {
+      type.defineValues(function() {
         return {
           _test: LazyVar(function() {
             return 1;
@@ -198,7 +198,7 @@ describe("Builder.prototype", function() {
       var Foo, foo, mixin, type;
       type = Builder();
       mixin = function(type) {
-        return type.createValues(function() {
+        return type.defineValues(function() {
           return {
             test: 1
           };
@@ -234,7 +234,7 @@ describe("Builder.prototype", function() {
       type.init(function() {
         return expect(this.test).toBe(void 0);
       });
-      type.createValues(function() {
+      type.defineValues(function() {
         return {
           test: 1
         };
@@ -246,164 +246,14 @@ describe("Builder.prototype", function() {
       return foo = Foo();
     });
   });
-  describeMode("isDev", true, function() {
-    describe("defineProperties()", function() {
-      return it("hides keys that begin with '_'", function() {
-        var Foo, foo, type;
-        type = Builder();
-        type.defineProperties({
-          _test: {
-            value: 1
-          }
-        });
-        Foo = type.build();
-        foo = Foo();
-        return expect(Object.keys(foo)).toEqual([]);
-      });
-    });
-    describe("definePrototype()", function() {
-      return it("hides keys that begin with '_'", function() {
-        var Foo, type;
-        type = Builder();
-        type.definePrototype({
-          _test: emptyFunction
-        });
-        Foo = type.build();
-        return expect(Object.keys(Foo.prototype)).toEqual([]);
-      });
-    });
-    describe("defineStatics()", function() {
-      return it("hides keys that begin with '_'", function() {
-        var Foo, type;
-        type = Builder();
-        type.defineStatics({
-          _test: emptyFunction
-        });
-        Foo = type.build();
-        return expect(Object.keys(Foo)).toEqual([]);
-      });
-    });
-    describe("createValues()", function() {
-      return it("hides keys that begin with '_'", function() {
-        var Foo, foo, type;
-        type = Builder();
-        type.createValues(function() {
-          return {
-            _test: 1
-          };
-        });
-        Foo = type.build();
-        foo = Foo();
-        return expect(Object.keys(foo)).toEqual([]);
-      });
-    });
-    describe("createFrozenValues()", function() {
-      var foo;
-      foo = null;
-      beforeAll(function() {
-        var Foo, type;
-        type = Builder();
-        type.createFrozenValues(function() {
-          return {
-            test: 1,
-            _test: 1
-          };
-        });
-        Foo = type.build();
-        return foo = Foo();
-      });
-      it("throws when writing the value", function() {
-        expect(foo.test).toBe(1);
-        return expect(function() {
-          return foo.test = 2;
-        }).toThrowError("'test' is not writable.");
-      });
-      it("throws when redefining the value", function() {
-        return expect(function() {
-          return Object.defineProperty(foo, "test", {
-            value: 1,
-            writable: true
-          });
-        }).toThrowError("Cannot redefine property: test");
-      });
-      return it("hides keys that begin with '_'", function() {
-        expect(foo._test).toBe(1);
-        return expect(Object.keys(foo)).toEqual(["test"]);
-      });
-    });
-    return describe("createReactiveValues()", function() {
-      return it("hides keys that begin with '_'", function() {
-        var Foo, foo, type;
-        type = Builder();
-        type.createReactiveValues(function() {
-          return {
-            _test: 1
-          };
-        });
-        Foo = type.build();
-        foo = Foo();
-        return expect(Object.keys(foo)).toEqual([]);
-      });
-    });
-  });
   return describeMode("isDev", false, function() {
-    describe("defineProperties()", function() {
-      return it("shows keys that begin with '_'", function() {
-        var Foo, foo, type;
-        type = Builder();
-        type.defineProperties({
-          _test: {
-            value: 1
-          }
-        });
-        Foo = type.build();
-        foo = Foo();
-        return expect(Object.keys(foo)).toEqual(["_test"]);
-      });
-    });
-    describe("definePrototype()", function() {
-      return it("shows keys that begin with '_'", function() {
-        var Foo, type;
-        type = Builder();
-        type.definePrototype({
-          _test: emptyFunction
-        });
-        Foo = type.build();
-        return expect(Object.keys(Foo.prototype)).toEqual(["_test"]);
-      });
-    });
-    describe("defineStatics()", function() {
-      return it("shows keys that begin with '_'", function() {
-        var Foo, type;
-        type = Builder();
-        type.defineStatics({
-          _test: emptyFunction
-        });
-        Foo = type.build();
-        return expect(Object.keys(Foo)).toEqual(["_test"]);
-      });
-    });
-    describe("createValues()", function() {
-      return it("shows keys that begin with '_'", function() {
-        var Foo, foo, type;
-        type = Builder();
-        type.createValues(function() {
-          return {
-            _test: 1
-          };
-        });
-        Foo = type.build();
-        foo = Foo();
-        return expect(Object.keys(foo)).toEqual(["_test"]);
-      });
-    });
-    describe("createFrozenValues()", function() {
+    return describe("defineFrozenValues()", function() {
       var foo;
       foo = null;
       beforeAll(function() {
         var Foo, type;
         type = Builder();
-        type.createFrozenValues(function() {
+        type.defineFrozenValues(function() {
           return {
             test: 1,
             _test: 1
@@ -418,7 +268,7 @@ describe("Builder.prototype", function() {
         }).not.toThrow();
         return expect(foo.test).toBe(2);
       });
-      it("allows redefining the value", function() {
+      return it("allows redefining the value", function() {
         expect(function() {
           return Object.defineProperty(foo, "test", {
             value: 1,
@@ -427,23 +277,6 @@ describe("Builder.prototype", function() {
         }).not.toThrow();
         foo.test = 2;
         return expect(foo.test).toBe(2);
-      });
-      return it("shows keys that begin with '_'", function() {
-        return expect(Object.keys(foo)).toEqual(["test", "_test"]);
-      });
-    });
-    return describe("createReactiveValues()", function() {
-      return it("shows keys that begin with '_'", function() {
-        var Foo, foo, type;
-        type = Builder();
-        type.createReactiveValues(function() {
-          return {
-            _test: 1
-          };
-        });
-        Foo = type.build();
-        foo = Foo();
-        return expect(Object.keys(foo)).toEqual(["_test"]);
       });
     });
   });

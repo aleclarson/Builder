@@ -57,12 +57,12 @@ describe "Builder.prototype", ->
       expect foo.test
         .toBe 1
 
-  describe "definePrototype()", ->
+  describe "defineMethods()", ->
 
     it "adds values to the 'prototype'", ->
 
       type = Builder()
-      type.definePrototype { test: emptyFunction }
+      type.defineMethods { test: emptyFunction }
       Foo = type.build()
 
       expect Foo::test
@@ -79,12 +79,12 @@ describe "Builder.prototype", ->
       expect Foo.test
         .toBe emptyFunction
 
-  describe "createValues()", ->
+  describe "defineValues()", ->
 
     it "adds writable values to each instance", ->
 
       type = Builder()
-      type.createValues -> { test: 1 }
+      type.defineValues -> { test: 1 }
       Foo = type.build()
       foo = Foo()
 
@@ -95,19 +95,19 @@ describe "Builder.prototype", ->
       expect foo.test
         .toBe 2
 
-  describe "createFrozenValues()", ->
+  describe "defineFrozenValues()", ->
 
     it "adds frozen values to each instance", ->
 
       type = Builder()
-      type.createFrozenValues -> { test: 1 }
+      type.defineFrozenValues -> { test: 1 }
       Foo = type.build()
       foo = Foo()
 
       expect foo.test
         .toBe 1
 
-  describe "createReactiveValues()", ->
+  describe "defineReactiveValues()", ->
 
     it "adds reactive values to each instance", ->
 
@@ -115,7 +115,7 @@ describe "Builder.prototype", ->
 
       type = Builder()
 
-      type.createReactiveValues -> { test: 1 }
+      type.defineReactiveValues -> { test: 1 }
 
       Foo = type.build()
 
@@ -141,7 +141,7 @@ describe "Builder.prototype", ->
 
       type = Builder()
 
-      type.definePrototype { test: -> this }
+      type.defineMethods { test: -> this }
 
       type.bindMethods [ "test" ]
 
@@ -165,7 +165,7 @@ describe "Builder.prototype", ->
 
       type = Builder()
 
-      type.createValues -> { _test: 1 }
+      type.defineValues -> { _test: 1 }
 
       type.exposeGetters [ "test" ]
 
@@ -187,7 +187,7 @@ describe "Builder.prototype", ->
 
       type = Builder()
 
-      type.createValues -> { _test: LazyVar -> 1 }
+      type.defineValues -> { _test: LazyVar -> 1 }
 
       type.exposeLazyGetters [ "test" ]
 
@@ -208,7 +208,7 @@ describe "Builder.prototype", ->
       type = Builder()
 
       mixin = (type) ->
-        type.createValues -> { test: 1 }
+        type.defineValues -> { test: 1 }
 
       type.addMixins [ mixin ]
 
@@ -257,8 +257,7 @@ describe "Builder.prototype", ->
         expect @test
           .toBe undefined
 
-      type.createValues ->
-        test: 1
+      type.defineValues -> { test: 1 }
 
       type.init ->
         expect @test
@@ -268,152 +267,15 @@ describe "Builder.prototype", ->
 
       foo = Foo()
 
-  describeMode "isDev", yes, ->
-
-    describe "defineProperties()", ->
-
-      it "hides keys that begin with '_'", ->
-
-        type = Builder()
-        type.defineProperties { _test: { value: 1 } }
-        Foo = type.build()
-        foo = Foo()
-
-        expect Object.keys foo
-          .toEqual []
-
-    describe "definePrototype()", ->
-
-      it "hides keys that begin with '_'", ->
-
-        type = Builder()
-        type.definePrototype { _test: emptyFunction }
-        Foo = type.build()
-
-        expect Object.keys Foo::
-          .toEqual []
-
-    describe "defineStatics()", ->
-
-      it "hides keys that begin with '_'", ->
-
-        type = Builder()
-        type.defineStatics { _test: emptyFunction }
-        Foo = type.build()
-
-        expect Object.keys Foo
-          .toEqual []
-
-    describe "createValues()", ->
-
-      it "hides keys that begin with '_'", ->
-
-        type = Builder()
-        type.createValues -> { _test: 1 }
-        Foo = type.build()
-        foo = Foo()
-
-        expect Object.keys foo
-          .toEqual []
-
-    describe "createFrozenValues()", ->
-
-      foo = null
-
-      beforeAll ->
-        type = Builder()
-        type.createFrozenValues -> { test: 1, _test: 1 }
-        Foo = type.build()
-        foo = Foo()
-
-      it "throws when writing the value", ->
-
-        expect foo.test
-          .toBe 1
-
-        expect -> foo.test = 2
-          .toThrowError "'test' is not writable."
-
-      it "throws when redefining the value", ->
-
-        expect -> Object.defineProperty foo, "test", { value: 1, writable: yes }
-          .toThrowError "Cannot redefine property: test"
-
-      it "hides keys that begin with '_'", ->
-
-        expect foo._test
-          .toBe 1
-
-        expect Object.keys foo
-          .toEqual [ "test" ]
-
-    describe "createReactiveValues()", ->
-
-      it "hides keys that begin with '_'", ->
-
-        type = Builder()
-        type.createReactiveValues -> { _test: 1 }
-        Foo = type.build()
-        foo = Foo()
-
-        expect Object.keys foo
-          .toEqual []
-
   describeMode "isDev", no, ->
 
-    describe "defineProperties()", ->
-
-      it "shows keys that begin with '_'", ->
-
-        type = Builder()
-        type.defineProperties { _test: { value: 1 } }
-        Foo = type.build()
-        foo = Foo()
-
-        expect Object.keys foo
-          .toEqual [ "_test" ]
-
-    describe "definePrototype()", ->
-
-      it "shows keys that begin with '_'", ->
-
-        type = Builder()
-        type.definePrototype { _test: emptyFunction }
-        Foo = type.build()
-
-        expect Object.keys Foo::
-          .toEqual [ "_test" ]
-
-    describe "defineStatics()", ->
-
-      it "shows keys that begin with '_'", ->
-
-        type = Builder()
-        type.defineStatics { _test: emptyFunction }
-        Foo = type.build()
-
-        expect Object.keys Foo
-          .toEqual [ "_test" ]
-
-    describe "createValues()", ->
-
-      it "shows keys that begin with '_'", ->
-
-        type = Builder()
-        type.createValues -> { _test: 1 }
-        Foo = type.build()
-        foo = Foo()
-
-        expect Object.keys foo
-          .toEqual [ "_test" ]
-
-    describe "createFrozenValues()", ->
+    describe "defineFrozenValues()", ->
 
       foo = null
 
       beforeAll ->
         type = Builder()
-        type.createFrozenValues -> { test: 1, _test: 1 }
+        type.defineFrozenValues -> { test: 1, _test: 1 }
         Foo = type.build()
         foo = Foo()
 
@@ -434,23 +296,3 @@ describe "Builder.prototype", ->
 
         expect foo.test
           .toBe 2
-
-      it "shows keys that begin with '_'", ->
-
-        expect Object.keys foo
-          .toEqual [ "test", "_test" ]
-
-    describe "createReactiveValues()", ->
-
-      it "shows keys that begin with '_'", ->
-
-        type = Builder()
-
-        type.createReactiveValues -> { _test: 1 }
-
-        Foo = type.build()
-
-        foo = Foo()
-
-        expect Object.keys foo
-          .toEqual [ "_test" ]
