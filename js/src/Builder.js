@@ -287,6 +287,9 @@ define(Builder.prototype, {
   __initType: function(type) {
     var i, len, phase, phases;
     phases = this._phases.initType;
+    if (isDev) {
+      define(type, "_builder", this);
+    }
     if (phases.length) {
       for (i = 0, len = phases.length; i < len; i++) {
         phase = phases[i];

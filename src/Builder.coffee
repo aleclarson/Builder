@@ -236,6 +236,7 @@ define Builder.prototype,
 
   __initType: (type) ->
     phases = @_phases.initType
+    define type, "_builder", this if isDev
     if phases.length
       for phase in phases
         phase.call null, type

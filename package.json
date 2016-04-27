@@ -1,5 +1,5 @@
 {
-  "name": "builder",
+  "name": "Builder",
   "version": "1.0.0",
   "main": "js/src/Builder",
   "dependencies": {
@@ -7,7 +7,7 @@
     "define": "aleclarson/define#1.0.0",
     "emptyFunction": "aleclarson/emptyFunction#1.0.0",
     "isDev": "aleclarson/isDev#1.0.0",
-    "isEnumerableKey": "aleclarson/isEnumerableKey#1.0.0",
+    "Property": "aleclarson/Property#1.0.0",
     "sync": "aleclarson/sync#1.0.0",
     "type-utils": "aleclarson/type-utils#1.0.0"
   },
