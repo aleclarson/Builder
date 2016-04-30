@@ -35,49 +35,9 @@ Builder.props = Property.Map
   _didCreate: value: (type) -> setType this, type
 
   _phases: ->
-    build: []
-    initType: []
+    willBuild: []
+    didBuild: []
     initInstance: []
-
-define Builder.prototype,
-
-  build: ->
-
-    if @_cachedBuild
-      return @_cachedBuild
-
-    if @_phases.build.length
-      for phase in @_phases.build
-        phase.call this
-
-    transformArgs = @__createArgTransformer()
-    constructType = @__createConstructor()
-
-    type = @__createType ->
-      constructType type, transformArgs arguments
-
-    @__initType type
-
-    @_cachedBuild = type
-    return type
-
-  addMixins: (mixins) ->
-    assertType mixins, Array
-    for mixin in mixins
-      mixin this
-    return
-
-  createInstance: (createInstance) ->
-    assertType createInstance, Function
-    @_createInstance = (args) ->
-      createInstance.apply null, args
-    return
-
-  init: (init) ->
-    assertType init, Function
-    @_phases.initInstance.push (args) ->
-      init.apply this, args
-    return
 
 # This allows for defining values (a) with one function that returns
 # a property map or (b) with a property map of constant values & value creators.
@@ -86,7 +46,7 @@ createValueDefiner = (options) -> (createValues) ->
   prop = Property options
 
   if isType createValues, Function
-    @_phases.initInstance.push (args) ->
+    @_initInstance (args) ->
       values = createValues.apply this, args
       assertType values, Object
       for key, value of values
@@ -95,7 +55,7 @@ createValueDefiner = (options) -> (createValues) ->
     return
 
   assertType createValues, Object
-  @_phases.initInstance.push (args) ->
+  @_initInstance (args) ->
     for key, value of createValues
       if isType value, Function
         if value.length
@@ -106,6 +66,12 @@ createValueDefiner = (options) -> (createValues) ->
   return
 
 define Builder.prototype,
+
+  createInstance: (createInstance) ->
+    assertType createInstance, Function
+    @_createInstance = (args) ->
+      createInstance.apply null, args
+    return
 
   defineValues: createValueDefiner { needsValue: yes }
 
@@ -119,7 +85,7 @@ define Builder.prototype,
 
     props = sync.map props, Property
 
-    @_phases.initInstance.push ->
+    @_initInstance ->
       for key, prop of props
         prop.define this, key
       return
@@ -133,7 +99,7 @@ define Builder.prototype,
       assertType value, Function, key
       Property { value }
 
-    @_phases.initType.push (type) ->
+    @didBuild (type) ->
       for key, prop of props
         prop.define type.prototype, key
       return
@@ -150,7 +116,7 @@ define Builder.prototype,
 
       Property options
 
-    @_phases.initType.push (type) ->
+    @didBuild (type) ->
       for key, prop of props
         prop.define type, key
       return
@@ -158,7 +124,7 @@ define Builder.prototype,
 
   bindMethods: (keys) ->
     assert (isType keys, ArrayOf String), "'bindMethods' must be passed an array of strings!"
-    @_phases.initInstance.push ->
+    @_initInstance ->
       sync.each keys, (key) =>
         method = this[key]
         assertType method, Function, key
@@ -176,7 +142,7 @@ define Builder.prototype,
         get: -> this[internalKey]
         enumerable: yes
 
-    @_phases.initInstance.push ->
+    @_initInstance ->
       for key, prop of props
         prop.define this, key
       return
@@ -193,13 +159,73 @@ define Builder.prototype,
         get: -> this[internalKey].get()
         enumerable: yes
 
-    @_phases.initInstance.push ->
+    @_initInstance ->
       for key, prop of props
         prop.define this, key
       return
     return
 
-define Builder.prototype,
+  initInstance: (init) ->
+    assertType init, Function
+    @_initInstance (args) ->
+      init.apply this, args
+    return
+
+  willCreate: (fn) ->
+    assertType fn, Function
+    assert not @_willCreate, "'willCreate' is already defined!"
+    @_willCreate = fn
+    return
+
+  didCreate: (fn) ->
+    assertType fn, Function
+    assert not @_didCreate, "'didCreate' is already defined!"
+    @_didCreate = fn
+    return
+
+  addMixins: (mixins) ->
+    assertType mixins, Array
+    for mixin in mixins
+      mixin this
+    return
+
+  willBuild: (fn) ->
+    assertType fn, Function
+    @_phases.willBuild.push fn
+    return
+
+  didBuild: (fn) ->
+    assertType fn, Function
+    @_phases.didBuild.push fn
+    return
+
+  build: ->
+
+    if @_cachedBuild
+      return @_cachedBuild
+
+    if @_phases.willBuild.length
+      for phase in @_phases.willBuild
+        phase.call this
+
+    transformArgs = @__createArgTransformer()
+    constructType = @__createConstructor()
+
+    type = @__createType ->
+      constructType type, transformArgs arguments
+
+    if @_phases.didBuild.length
+      for phase in @_phases.didBuild
+        phase.call null, type
+
+    @_cachedBuild = type
+
+    return type
+
+  _initInstance: (init) ->
+    assertType init, Function
+    @_phases.initInstance.push init
+    return
 
   __createArgTransformer: ->
     emptyFunction.thatReturnsArgument
@@ -235,9 +261,5 @@ define Builder.prototype,
     return type
 
   __initType: (type) ->
-    phases = @_phases.initType
     define type, "_builder", this if isDev
-    if phases.length
-      for phase in phases
-        phase.call null, type
     return

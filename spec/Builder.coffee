@@ -225,7 +225,7 @@ describe "Builder.prototype", ->
 
       type = Builder()
 
-      type.init spy = jasmine.createSpy()
+      type.initInstance spy = jasmine.createSpy()
 
       Foo = type.build()
 
@@ -238,9 +238,9 @@ describe "Builder.prototype", ->
 
       type = Builder()
 
-      type.init spy = jasmine.createSpy()
+      type.initInstance spy = jasmine.createSpy()
 
-      type.init spy
+      type.initInstance spy
 
       Foo = type.build()
 
@@ -253,13 +253,13 @@ describe "Builder.prototype", ->
 
       type = Builder()
 
-      type.init ->
+      type.initInstance ->
         expect @test
           .toBe undefined
 
       type.defineValues -> { test: 1 }
 
-      type.init ->
+      type.initInstance ->
         expect @test
           .toBe 1
 
