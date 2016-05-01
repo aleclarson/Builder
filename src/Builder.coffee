@@ -16,6 +16,8 @@ Property = require "Property"
 define = require "define"
 sync = require "sync"
 
+ValueDefiner = require "./ValueDefiner"
+
 module.exports =
 Builder = NamedFunction "Builder", ->
   self = setType {}, Builder
@@ -37,33 +39,9 @@ Builder.props = Property.Map
   _phases: ->
     willBuild: []
     didBuild: []
+    willCreate: []
+    didCreate: []
     initInstance: []
-
-# This allows for defining values (a) with one function that returns
-# a property map or (b) with a property map of constant values & value creators.
-createValueDefiner = (options) -> (createValues) ->
-
-  prop = Property options
-
-  if isType createValues, Function
-    @_initInstance (args) ->
-      values = createValues.apply this, args
-      assertType values, Object
-      for key, value of values
-        prop.define this, key, value
-      return
-    return
-
-  assertType createValues, Object
-  @_initInstance (args) ->
-    for key, value of createValues
-      if isType value, Function
-        if value.length
-          prop.define this, key, value.apply this, args
-        else prop.define this, key, value.call this
-      else prop.define this, key, value
-    return
-  return
 
 define Builder.prototype,
 
@@ -73,11 +51,16 @@ define Builder.prototype,
       createInstance.apply null, args
     return
 
-  defineValues: createValueDefiner { needsValue: yes }
+  defineValues: ValueDefiner
+    needsValue: yes
 
-  defineFrozenValues: createValueDefiner { frozen: yes, needsValue: yes }
+  defineFrozenValues: ValueDefiner
+    needsValue: yes
+    frozen: yes
 
-  defineReactiveValues: createValueDefiner { reactive: yes, needsValue: yes }
+  defineReactiveValues: ValueDefiner
+    needsValue: yes
+    reactive: yes
 
   defineProperties: (props) ->
 
@@ -173,14 +156,12 @@ define Builder.prototype,
 
   willCreate: (fn) ->
     assertType fn, Function
-    assert not @_willCreate, "'willCreate' is already defined!"
-    @_willCreate = fn
+    @_phases.willCreate.push fn
     return
 
   didCreate: (fn) ->
     assertType fn, Function
-    assert not @_didCreate, "'didCreate' is already defined!"
-    @_didCreate = fn
+    @_phases.didCreate.push fn
     return
 
   addMixins: (mixins) ->
@@ -204,9 +185,7 @@ define Builder.prototype,
     if @_cachedBuild
       return @_cachedBuild
 
-    if @_phases.willBuild.length
-      for phase in @_phases.willBuild
-        phase.call this
+    @_executePhase "willBuild", this
 
     transformArgs = @__createArgTransformer()
     constructType = @__createConstructor()
@@ -214,9 +193,7 @@ define Builder.prototype,
     type = @__createType ->
       constructType type, transformArgs arguments
 
-    if @_phases.didBuild.length
-      for phase in @_phases.didBuild
-        phase.call null, type
+    @_executePhase "didBuild", null, [ type ]
 
     @_cachedBuild = type
 
@@ -225,6 +202,17 @@ define Builder.prototype,
   _initInstance: (init) ->
     assertType init, Function
     @_phases.initInstance.push init
+    return
+
+  _executePhase: (phaseName, scope, args) ->
+    callbacks = @_phases[phaseName]
+    return unless callbacks.length
+    if args
+      for callback in callbacks
+        callback.apply scope, args
+    else
+      for callback in callbacks
+        callback.call scope
     return
 
   __createArgTransformer: ->
