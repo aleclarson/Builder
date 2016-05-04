@@ -18,23 +18,24 @@ sync = require "sync"
 
 ValueDefiner = require "./ValueDefiner"
 
+createObject = -> {}
+
 module.exports =
 Builder = NamedFunction "Builder", ->
+
   self = setType {}, Builder
+
   Builder.props.define self
+
   return self
 
 Builder.props = Property.Map
 
   _cachedBuild: null
 
-  _kind: value: Object
+  _kind: null
 
-  _willCreate: value: emptyFunction
-
-  _createInstance: value: -> {}
-
-  _didCreate: value: (type) -> setType this, type
+  _createInstance: null
 
   _phases: ->
     willBuild: []
@@ -46,9 +47,13 @@ Builder.props = Property.Map
 define Builder.prototype,
 
   createInstance: (createInstance) ->
+
     assertType createInstance, Function
+    assert not @_createInstance, "'createInstance' is already defined!"
+
     @_createInstance = (args) ->
       createInstance.apply null, args
+
     return
 
   defineValues: ValueDefiner
@@ -187,11 +192,17 @@ define Builder.prototype,
 
     @_executePhase "willBuild", this
 
+    unless @_createInstance
+      @_kind = Object
+      @_createInstance = createObject
+
     transformArgs = @__createArgTransformer()
     constructType = @__createConstructor()
 
     type = @__createType ->
       constructType type, transformArgs arguments
+
+    define type, "_builder", this if isDev
 
     @_executePhase "didBuild", null, [ type ]
 
@@ -207,6 +218,9 @@ define Builder.prototype,
   _executePhase: (phaseName, scope, args) ->
     callbacks = @_phases[phaseName]
     return unless callbacks.length
+    @_executeCallbacks callbacks, scope, args
+
+  _executeCallbacks: (callbacks, scope, args) ->
     if args
       for callback in callbacks
         callback.apply scope, args
@@ -215,39 +229,28 @@ define Builder.prototype,
         callback.call scope
     return
 
+  _createPhaseExecutor: (phaseName) ->
+    callbacks = @_phases[phaseName]
+    return emptyFunction unless callbacks.length
+    @_executeCallbacks.bind null, callbacks
+
   __createArgTransformer: ->
     emptyFunction.thatReturnsArgument
 
   __createConstructor: ->
 
-    willCreate = @_willCreate
+    willCreate = @_createPhaseExecutor "willCreate"
     createInstance = @_createInstance
-    initInstance = @__createInitializer()
-    didCreate = @_didCreate
+    didCreate = @_createPhaseExecutor "didCreate"
+    initInstance = @_createPhaseExecutor "initInstance"
 
     return (type, args) ->
-      willCreate.call null, type, args
+      willCreate null, arguments
       self = createInstance.call null, args
-      didCreate.call self, type, args
-      initInstance self, args
+      didCreate self, arguments
+      initInstance self, [ args ]
       return self
-
-  __createInitializer: ->
-
-    phases = @_phases.initInstance
-
-    if phases.length is 0
-      return emptyFunction
-
-    return (self, args) ->
-      for phase in phases
-        phase.call self, args
-      return
 
   __createType: (type) ->
     setKind type, @_kind
     return type
-
-  __initType: (type) ->
-    define type, "_builder", this if isDev
-    return

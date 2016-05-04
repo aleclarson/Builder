@@ -1,6 +1,7 @@
 
-# This allows for defining values (a) with one function that returns
-# a property map or (b) with a property map of constant values & value creators.
+# This allows for defining values with:
+#   - A function that returns a property map
+#   - A property map of constant values & value creators
 
 { isType, assertType } = require "type-utils"
 

@@ -1,4 +1,4 @@
-var ArrayOf, Builder, NamedFunction, Null, Property, ValueDefiner, assert, assertType, define, emptyFunction, isType, ref, setKind, setType, sync, validateTypes;
+var ArrayOf, Builder, NamedFunction, Null, Property, ValueDefiner, assert, assertType, createObject, define, emptyFunction, isType, ref, setKind, setType, sync, validateTypes;
 
 require("isDev");
 
@@ -16,6 +16,10 @@ sync = require("sync");
 
 ValueDefiner = require("./ValueDefiner");
 
+createObject = function() {
+  return {};
+};
+
 module.exports = Builder = NamedFunction("Builder", function() {
   var self;
   self = setType({}, Builder);
@@ -25,22 +29,8 @@ module.exports = Builder = NamedFunction("Builder", function() {
 
 Builder.props = Property.Map({
   _cachedBuild: null,
-  _kind: {
-    value: Object
-  },
-  _willCreate: {
-    value: emptyFunction
-  },
-  _createInstance: {
-    value: function() {
-      return {};
-    }
-  },
-  _didCreate: {
-    value: function(type) {
-      return setType(this, type);
-    }
-  },
+  _kind: null,
+  _createInstance: null,
   _phases: function() {
     return {
       willBuild: [],
@@ -55,6 +45,7 @@ Builder.props = Property.Map({
 define(Builder.prototype, {
   createInstance: function(createInstance) {
     assertType(createInstance, Function);
+    assert(!this._createInstance, "'createInstance' is already defined!");
     this._createInstance = function(args) {
       return createInstance.apply(null, args);
     };
@@ -212,11 +203,18 @@ define(Builder.prototype, {
       return this._cachedBuild;
     }
     this._executePhase("willBuild", this);
+    if (!this._createInstance) {
+      this._kind = Object;
+      this._createInstance = createObject;
+    }
     transformArgs = this.__createArgTransformer();
     constructType = this.__createConstructor();
     type = this.__createType(function() {
       return constructType(type, transformArgs(arguments));
     });
+    if (isDev) {
+      define(type, "_builder", this);
+    }
     this._executePhase("didBuild", null, [type]);
     this._cachedBuild = type;
     return type;
@@ -226,11 +224,15 @@ define(Builder.prototype, {
     this._phases.initInstance.push(init);
   },
   _executePhase: function(phaseName, scope, args) {
-    var callback, callbacks, i, j, len, len1;
+    var callbacks;
     callbacks = this._phases[phaseName];
     if (!callbacks.length) {
       return;
     }
+    return this._executeCallbacks(callbacks, scope, args);
+  },
+  _executeCallbacks: function(callbacks, scope, args) {
+    var callback, i, j, len, len1;
     if (args) {
       for (i = 0, len = callbacks.length; i < len; i++) {
         callback = callbacks[i];
@@ -243,46 +245,35 @@ define(Builder.prototype, {
       }
     }
   },
+  _createPhaseExecutor: function(phaseName) {
+    var callbacks;
+    callbacks = this._phases[phaseName];
+    if (!callbacks.length) {
+      return emptyFunction;
+    }
+    return this._executeCallbacks.bind(null, callbacks);
+  },
   __createArgTransformer: function() {
     return emptyFunction.thatReturnsArgument;
   },
   __createConstructor: function() {
     var createInstance, didCreate, initInstance, willCreate;
-    willCreate = this._willCreate;
+    willCreate = this._createPhaseExecutor("willCreate");
     createInstance = this._createInstance;
-    initInstance = this.__createInitializer();
-    didCreate = this._didCreate;
+    didCreate = this._createPhaseExecutor("didCreate");
+    initInstance = this._createPhaseExecutor("initInstance");
     return function(type, args) {
       var self;
-      willCreate.call(null, type, args);
+      willCreate(null, arguments);
       self = createInstance.call(null, args);
-      didCreate.call(self, type, args);
-      initInstance(self, args);
+      didCreate(self, arguments);
+      initInstance(self, [args]);
       return self;
-    };
-  },
-  __createInitializer: function() {
-    var phases;
-    phases = this._phases.initInstance;
-    if (phases.length === 0) {
-      return emptyFunction;
-    }
-    return function(self, args) {
-      var i, len, phase;
-      for (i = 0, len = phases.length; i < len; i++) {
-        phase = phases[i];
-        phase.call(self, args);
-      }
     };
   },
   __createType: function(type) {
     setKind(type, this._kind);
     return type;
-  },
-  __initType: function(type) {
-    if (isDev) {
-      define(type, "_builder", this);
-    }
   }
 });
 
