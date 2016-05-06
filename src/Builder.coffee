@@ -46,16 +46,6 @@ Builder.props = Property.Map
 
 define Builder.prototype,
 
-  createInstance: (createInstance) ->
-
-    assertType createInstance, Function
-    assert not @_createInstance, "'createInstance' is already defined!"
-
-    @_createInstance = (args) ->
-      createInstance.apply null, args
-
-    return
-
   defineValues: ValueDefiner
     needsValue: yes
 
@@ -153,6 +143,16 @@ define Builder.prototype,
       return
     return
 
+  createInstance: (createInstance) ->
+
+    assertType createInstance, Function
+    assert not @_createInstance, "'createInstance' is already defined!"
+
+    @_createInstance = (args) ->
+      createInstance.apply null, args
+
+    return
+
   initInstance: (init) ->
     assertType init, Function
     @_initInstance (args) ->
@@ -197,7 +197,7 @@ define Builder.prototype,
       @_createInstance = createObject
 
     transformArgs = @__createArgTransformer()
-    constructType = @__createConstructor()
+    constructType = @__wrapConstructor @__createConstructor @_createInstance
 
     type = @__createType ->
       constructType type, transformArgs arguments
@@ -209,6 +209,9 @@ define Builder.prototype,
     @_cachedBuild = type
 
     return type
+
+  construct: ->
+    @build().apply null, arguments
 
   _initInstance: (init) ->
     assertType init, Function
@@ -234,23 +237,27 @@ define Builder.prototype,
     return emptyFunction unless callbacks.length
     @_executeCallbacks.bind null, callbacks
 
+  __createType: (type) ->
+    setKind type, @_kind
+    return type
+
   __createArgTransformer: ->
     emptyFunction.thatReturnsArgument
 
-  __createConstructor: ->
+  __wrapConstructor: (createInstance) ->
 
     willCreate = @_createPhaseExecutor "willCreate"
-    createInstance = @_createInstance
     didCreate = @_createPhaseExecutor "didCreate"
     initInstance = @_createPhaseExecutor "initInstance"
 
     return (type, args) ->
       willCreate null, arguments
-      self = createInstance.call null, args
+      self = createInstance type, args
       didCreate self, arguments
       initInstance self, [ args ]
       return self
 
-  __createType: (type) ->
-    setKind type, @_kind
-    return type
+  __createConstructor: (createInstance) ->
+    return (type, args) ->
+      instance = createInstance.call null, args
+      setType instance, type

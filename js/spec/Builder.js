@@ -214,7 +214,7 @@ describe("Builder.prototype", function() {
     it("runs a function somewhere in each instance's initialization phase", function() {
       var Foo, foo, spy, type;
       type = Builder();
-      type.init(spy = jasmine.createSpy());
+      type.initInstance(spy = jasmine.createSpy());
       Foo = type.build();
       foo = Foo();
       return expect(spy.calls.count()).toBe(1);
@@ -222,8 +222,8 @@ describe("Builder.prototype", function() {
     it("can be called multiple times", function() {
       var Foo, foo, spy, type;
       type = Builder();
-      type.init(spy = jasmine.createSpy());
-      type.init(spy);
+      type.initInstance(spy = jasmine.createSpy());
+      type.initInstance(spy);
       Foo = type.build();
       foo = Foo();
       return expect(spy.calls.count()).toBe(2);
@@ -231,7 +231,7 @@ describe("Builder.prototype", function() {
     return it("can be interleaved with other initialization methods", function() {
       var Foo, foo, type;
       type = Builder();
-      type.init(function() {
+      type.initInstance(function() {
         return expect(this.test).toBe(void 0);
       });
       type.defineValues(function() {
@@ -239,7 +239,7 @@ describe("Builder.prototype", function() {
           test: 1
         };
       });
-      type.init(function() {
+      type.initInstance(function() {
         return expect(this.test).toBe(1);
       });
       Foo = type.build();

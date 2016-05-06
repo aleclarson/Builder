@@ -43,13 +43,6 @@ Builder.props = Property.Map({
 });
 
 define(Builder.prototype, {
-  createInstance: function(createInstance) {
-    assertType(createInstance, Function);
-    assert(!this._createInstance, "'createInstance' is already defined!");
-    this._createInstance = function(args) {
-      return createInstance.apply(null, args);
-    };
-  },
   defineValues: ValueDefiner({
     needsValue: true
   }),
@@ -167,6 +160,13 @@ define(Builder.prototype, {
       }
     });
   },
+  createInstance: function(createInstance) {
+    assertType(createInstance, Function);
+    assert(!this._createInstance, "'createInstance' is already defined!");
+    this._createInstance = function(args) {
+      return createInstance.apply(null, args);
+    };
+  },
   initInstance: function(init) {
     assertType(init, Function);
     this._initInstance(function(args) {
@@ -208,7 +208,7 @@ define(Builder.prototype, {
       this._createInstance = createObject;
     }
     transformArgs = this.__createArgTransformer();
-    constructType = this.__createConstructor();
+    constructType = this.__wrapConstructor(this.__createConstructor(this._createInstance));
     type = this.__createType(function() {
       return constructType(type, transformArgs(arguments));
     });
@@ -218,6 +218,9 @@ define(Builder.prototype, {
     this._executePhase("didBuild", null, [type]);
     this._cachedBuild = type;
     return type;
+  },
+  construct: function() {
+    return this.build().apply(null, arguments);
   },
   _initInstance: function(init) {
     assertType(init, Function);
@@ -253,27 +256,33 @@ define(Builder.prototype, {
     }
     return this._executeCallbacks.bind(null, callbacks);
   },
+  __createType: function(type) {
+    setKind(type, this._kind);
+    return type;
+  },
   __createArgTransformer: function() {
     return emptyFunction.thatReturnsArgument;
   },
-  __createConstructor: function() {
-    var createInstance, didCreate, initInstance, willCreate;
+  __wrapConstructor: function(createInstance) {
+    var didCreate, initInstance, willCreate;
     willCreate = this._createPhaseExecutor("willCreate");
-    createInstance = this._createInstance;
     didCreate = this._createPhaseExecutor("didCreate");
     initInstance = this._createPhaseExecutor("initInstance");
     return function(type, args) {
       var self;
       willCreate(null, arguments);
-      self = createInstance.call(null, args);
+      self = createInstance(type, args);
       didCreate(self, arguments);
       initInstance(self, [args]);
       return self;
     };
   },
-  __createType: function(type) {
-    setKind(type, this._kind);
-    return type;
+  __createConstructor: function(createInstance) {
+    return function(type, args) {
+      var instance;
+      instance = createInstance.call(null, args);
+      return setType(instance, type);
+    };
   }
 });
 
