@@ -1,22 +1,24 @@
 
 require "isDev"
 
-{ Null
-  ArrayOf
-  isType
-  setType
-  setKind
-  assert
-  assertType
-  validateTypes } = require "type-utils"
+{ throwFailure } = require "failure"
 
 NamedFunction = require "NamedFunction"
 emptyFunction = require "emptyFunction"
+assertType = require "assertType"
+bindMethod = require "bindMethod"
 Property = require "Property"
+ArrayOf = require "ArrayOf"
+setType = require "setType"
+setKind = require "setKind"
+Tracer = require "tracer"
+isType = require "isType"
 define = require "define"
+assert = require "assert"
+guard = require "guard"
 sync = require "sync"
 
-ValueDefiner = require "./ValueDefiner"
+PropertyMapper = require "./PropertyMapper"
 
 createObject = -> {}
 
@@ -30,6 +32,8 @@ Builder = NamedFunction "Builder", ->
   return self
 
 Builder.props = Property.Map
+
+  _traceInit: -> Tracer "Builder", skip: 2
 
   _cachedBuild: null
 
@@ -46,16 +50,11 @@ Builder.props = Property.Map
 
 define Builder.prototype,
 
-  defineValues: ValueDefiner
-    needsValue: yes
+  defineValues: PropertyMapper { needsValue: yes }
 
-  defineFrozenValues: ValueDefiner
-    needsValue: yes
-    frozen: yes
+  defineFrozenValues: PropertyMapper { frozen: yes, needsValue: yes }
 
-  defineReactiveValues: ValueDefiner
-    needsValue: yes
-    reactive: yes
+  defineReactiveValues: PropertyMapper { reactive: yes, needsValue: yes }
 
   defineProperties: (props) ->
 
@@ -66,6 +65,22 @@ define Builder.prototype,
     @_initInstance ->
       for key, prop of props
         prop.define this, key
+      return
+    return
+
+  definePrototype: (props) ->
+
+    assertType props, Object
+
+    props = sync.map props, (prop) ->
+      assertType prop, Object
+      assertType prop.get, Function
+      assert not isType prop.set, Function
+      return Property prop
+
+    @didBuild (type) ->
+      for key, prop of props
+        prop.define type.prototype, key
       return
     return
 
@@ -103,10 +118,9 @@ define Builder.prototype,
   bindMethods: (keys) ->
     assert (isType keys, ArrayOf String), "'bindMethods' must be passed an array of strings!"
     @_initInstance ->
-      sync.each keys, (key) =>
-        method = this[key]
-        assertType method, Function, key
-        this[key] = => method.apply this, arguments
+      for key in keys
+        this[key] = bindMethod this, key
+      return
     return
 
   exposeGetters: (keys) ->
@@ -251,11 +265,16 @@ define Builder.prototype,
     initInstance = @_createPhaseExecutor "initInstance"
 
     return (type, args) ->
-      willCreate null, arguments
-      self = createInstance type, args
-      didCreate self, arguments
-      initInstance self, [ args ]
-      return self
+      tracer = Tracer "construct()"
+      guard ->
+        willCreate null, arguments
+        self = createInstance type, args
+        didCreate self, arguments
+        initInstance self, [ args ]
+        return self
+      .fail (error) ->
+        stack = tracer()
+        throwFailure error, { stack }
 
   __createConstructor: (createInstance) ->
     return (type, args) ->

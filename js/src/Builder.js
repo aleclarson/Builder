@@ -1,20 +1,38 @@
-var ArrayOf, Builder, NamedFunction, Null, Property, ValueDefiner, assert, assertType, createObject, define, emptyFunction, isType, ref, setKind, setType, sync, validateTypes;
+var ArrayOf, Builder, NamedFunction, Property, PropertyMapper, Tracer, assert, assertType, bindMethod, createObject, define, emptyFunction, guard, isType, setKind, setType, sync, throwFailure;
 
 require("isDev");
 
-ref = require("type-utils"), Null = ref.Null, ArrayOf = ref.ArrayOf, isType = ref.isType, setType = ref.setType, setKind = ref.setKind, assert = ref.assert, assertType = ref.assertType, validateTypes = ref.validateTypes;
+throwFailure = require("failure").throwFailure;
 
 NamedFunction = require("NamedFunction");
 
 emptyFunction = require("emptyFunction");
 
+assertType = require("assertType");
+
+bindMethod = require("bindMethod");
+
 Property = require("Property");
+
+ArrayOf = require("ArrayOf");
+
+setType = require("setType");
+
+setKind = require("setKind");
+
+Tracer = require("tracer");
+
+isType = require("isType");
 
 define = require("define");
 
+assert = require("assert");
+
+guard = require("guard");
+
 sync = require("sync");
 
-ValueDefiner = require("./ValueDefiner");
+PropertyMapper = require("./PropertyMapper");
 
 createObject = function() {
   return {};
@@ -28,6 +46,11 @@ module.exports = Builder = NamedFunction("Builder", function() {
 });
 
 Builder.props = Property.Map({
+  _traceInit: function() {
+    return Tracer("Builder", {
+      skip: 2
+    });
+  },
   _cachedBuild: null,
   _kind: null,
   _createInstance: null,
@@ -43,16 +66,16 @@ Builder.props = Property.Map({
 });
 
 define(Builder.prototype, {
-  defineValues: ValueDefiner({
+  defineValues: PropertyMapper({
     needsValue: true
   }),
-  defineFrozenValues: ValueDefiner({
-    needsValue: true,
-    frozen: true
+  defineFrozenValues: PropertyMapper({
+    frozen: true,
+    needsValue: true
   }),
-  defineReactiveValues: ValueDefiner({
-    needsValue: true,
-    reactive: true
+  defineReactiveValues: PropertyMapper({
+    reactive: true,
+    needsValue: true
   }),
   defineProperties: function(props) {
     assertType(props, Object);
@@ -62,6 +85,22 @@ define(Builder.prototype, {
       for (key in props) {
         prop = props[key];
         prop.define(this, key);
+      }
+    });
+  },
+  definePrototype: function(props) {
+    assertType(props, Object);
+    props = sync.map(props, function(prop) {
+      assertType(prop, Object);
+      assertType(prop.get, Function);
+      assert(!isType(prop.set, Function));
+      return Property(prop);
+    });
+    this.didBuild(function(type) {
+      var key, prop;
+      for (key in props) {
+        prop = props[key];
+        prop.define(type.prototype, key);
       }
     });
   },
@@ -104,16 +143,11 @@ define(Builder.prototype, {
   bindMethods: function(keys) {
     assert(isType(keys, ArrayOf(String)), "'bindMethods' must be passed an array of strings!");
     this._initInstance(function() {
-      return sync.each(keys, (function(_this) {
-        return function(key) {
-          var method;
-          method = _this[key];
-          assertType(method, Function, key);
-          return _this[key] = function() {
-            return method.apply(_this, arguments);
-          };
-        };
-      })(this));
+      var i, key, len;
+      for (i = 0, len = keys.length; i < len; i++) {
+        key = keys[i];
+        this[key] = bindMethod(this, key);
+      }
     });
   },
   exposeGetters: function(keys) {
@@ -269,12 +303,22 @@ define(Builder.prototype, {
     didCreate = this._createPhaseExecutor("didCreate");
     initInstance = this._createPhaseExecutor("initInstance");
     return function(type, args) {
-      var self;
-      willCreate(null, arguments);
-      self = createInstance(type, args);
-      didCreate(self, arguments);
-      initInstance(self, [args]);
-      return self;
+      var tracer;
+      tracer = Tracer("construct()");
+      return guard(function() {
+        var self;
+        willCreate(null, arguments);
+        self = createInstance(type, args);
+        didCreate(self, arguments);
+        initInstance(self, [args]);
+        return self;
+      }).fail(function(error) {
+        var stack;
+        stack = tracer();
+        return throwFailure(error, {
+          stack: stack
+        });
+      });
     };
   },
   __createConstructor: function(createInstance) {

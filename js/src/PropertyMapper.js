@@ -1,12 +1,14 @@
-var NamedFunction, Property, ValueDefiner, assertType, isType, ref;
-
-ref = require("type-utils"), isType = ref.isType, assertType = ref.assertType;
+var NamedFunction, Property, assertType, isType;
 
 NamedFunction = require("NamedFunction");
 
+assertType = require("assertType");
+
 Property = require("Property");
 
-module.exports = ValueDefiner = NamedFunction("ValueDefiner", function(options) {
+isType = require("isType");
+
+module.exports = NamedFunction("PropertyMapper", function(options) {
   return function(createValues) {
     var prop;
     prop = Property(options);
@@ -41,4 +43,4 @@ module.exports = ValueDefiner = NamedFunction("ValueDefiner", function(options) 
   };
 });
 
-//# sourceMappingURL=../../map/src/ValueDefiner.map
+//# sourceMappingURL=../../map/src/PropertyMapper.map
