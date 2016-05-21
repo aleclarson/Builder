@@ -13,7 +13,7 @@ module.exports = NamedFunction "PropertyMapper", (options) -> (createValues) ->
   prop = Property options
 
   if isType createValues, Function
-    @_initInstance (args) ->
+    @_initInstance.push (args) ->
       values = createValues.apply this, args
       assertType values, Object
       for key, value of values
@@ -22,7 +22,7 @@ module.exports = NamedFunction "PropertyMapper", (options) -> (createValues) ->
     return
 
   assertType createValues, Object
-  @_initInstance (args) ->
+  @_initInstance.push (args) ->
     for key, value of createValues
       if isType value, Function
         if value.length

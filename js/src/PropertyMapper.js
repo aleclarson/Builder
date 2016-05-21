@@ -13,7 +13,7 @@ module.exports = NamedFunction("PropertyMapper", function(options) {
     var prop;
     prop = Property(options);
     if (isType(createValues, Function)) {
-      this._initInstance(function(args) {
+      this._initInstance.push(function(args) {
         var key, value, values;
         values = createValues.apply(this, args);
         assertType(values, Object);
@@ -25,7 +25,7 @@ module.exports = NamedFunction("PropertyMapper", function(options) {
       return;
     }
     assertType(createValues, Object);
-    this._initInstance(function(args) {
+    this._initInstance.push(function(args) {
       var key, value;
       for (key in createValues) {
         value = createValues[key];

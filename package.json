@@ -6,6 +6,8 @@
     "ArrayOf": "aleclarson/ArrayOf#1.0.0",
     "NamedFunction": "aleclarson/NamedFunction#2.0.0",
     "Property": "aleclarson/Property#1.0.0",
+    "Super": "aleclarson/Super#1.0.0",
+    "applyChain": "aleclarson/applyChain#1.0.0",
     "assert": "aleclarson/assert#1.0.0",
     "assertType": "aleclarson/assertType#1.0.0",
     "bindMethod": "aleclarson/bindMethod#1.0.0",
@@ -13,12 +15,14 @@
     "emptyFunction": "aleclarson/emptyFunction#1.0.0",
     "failure": "aleclarson/failure#1.0.0",
     "guard": "aleclarson/guard#1.0.0",
+    "in-array": "aleclarson/in-array#1.0.0",
     "isDev": "aleclarson/isDev#1.0.0",
     "isType": "aleclarson/isType#1.0.0",
     "setKind": "aleclarson/setKind#1.0.0",
     "setType": "aleclarson/setType#1.0.0",
     "sync": "aleclarson/sync#1.0.0",
-    "tracer": "aleclarson/tracer#1.0.0"
+    "tracer": "aleclarson/tracer#1.0.0",
+    "wrapValue": "aleclarson/wrapValue#1.0.0"
   },
   "lotus": {
     "plugins": [
