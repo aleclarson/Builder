@@ -162,6 +162,9 @@ define Builder.prototype,
       return
     return
 
+  # If defining a method that is already inherited,
+  # the overriding method can use 'this.__super' to
+  # call the overridden method that was inherited.
   defineMethods: (methods) ->
 
     assertType methods, Object
@@ -169,24 +172,29 @@ define Builder.prototype,
     prefix = if @_name then @_name + "::" else ""
 
     kind = @_kind
+    hasInherited = no
     if kind
       for key, method of methods
         assertType method, Function, prefix + key
+        continue if not Super.regex.test method.toString()
         inherited = Super.findInherited kind, key
-        continue if not inherited
+        assert inherited, "Cannot find method to override for: '#{prefix + key}'!"
         methods[key] = Super inherited, method
+        hasInherited = yes
     else if isDev
       for key, method of methods
         assertType method, Function, prefix + key
 
     prop = Property()
     @_didBuild.push (type) ->
-      Super.augment type
+      Super.augment type if hasInherited
       for key, method of methods
         prop.define type.prototype, key, method
       return
     return
 
+  # Used by methods that want to override the inherited
+  # method without needing a reference to the overridden method.
   overrideMethods: (methods) ->
 
     assertType methods, Object
@@ -199,7 +207,7 @@ define Builder.prototype,
     for key, method of methods
       assertType method, Function, prefix + key
       inherited = Super.findInherited kind, key
-      assert inherited, "Cannot find inherited method for '" + prefix + key + "'!"
+      assert inherited, "Cannot find method to override for: '#{prefix + key}'!"
 
     prop = Property()
     @_didBuild.push (type) ->

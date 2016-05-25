@@ -192,19 +192,22 @@ define(Builder.prototype, {
     });
   },
   defineMethods: function(methods) {
-    var inherited, key, kind, method, prefix, prop;
+    var hasInherited, inherited, key, kind, method, prefix, prop;
     assertType(methods, Object);
     prefix = this._name ? this._name + "::" : "";
     kind = this._kind;
+    hasInherited = false;
     if (kind) {
       for (key in methods) {
         method = methods[key];
         assertType(method, Function, prefix + key);
-        inherited = Super.findInherited(kind, key);
-        if (!inherited) {
+        if (!Super.regex.test(method.toString())) {
           continue;
         }
+        inherited = Super.findInherited(kind, key);
+        assert(inherited, "Cannot find method to override for: '" + (prefix + key) + "'!");
         methods[key] = Super(inherited, method);
+        hasInherited = true;
       }
     } else if (isDev) {
       for (key in methods) {
@@ -214,7 +217,9 @@ define(Builder.prototype, {
     }
     prop = Property();
     this._didBuild.push(function(type) {
-      Super.augment(type);
+      if (hasInherited) {
+        Super.augment(type);
+      }
       for (key in methods) {
         method = methods[key];
         prop.define(type.prototype, key, method);
@@ -231,7 +236,7 @@ define(Builder.prototype, {
       method = methods[key];
       assertType(method, Function, prefix + key);
       inherited = Super.findInherited(kind, key);
-      assert(inherited, "Cannot find inherited method for '" + prefix + key + "'!");
+      assert(inherited, "Cannot find method to override for: '" + (prefix + key) + "'!");
     }
     prop = Property();
     this._didBuild.push(function(type) {

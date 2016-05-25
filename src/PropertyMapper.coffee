@@ -8,22 +8,22 @@ assertType = require "assertType"
 Property = require "Property"
 isType = require "isType"
 
-module.exports = NamedFunction "PropertyMapper", (options) -> (createValues) ->
+module.exports = NamedFunction "PropertyMapper", (options) -> (values) ->
 
   prop = Property options
 
-  if isType createValues, Function
+  if isType values, Function
     @_initInstance.push (args) ->
-      values = createValues.apply this, args
-      assertType values, Object
-      for key, value of values
+      instValues = values.apply this, args
+      assertType instValues, Object
+      for key, value of instValues
         prop.define this, key, value
       return
     return
 
-  assertType createValues, Object
+  assertType values, Object
   @_initInstance.push (args) ->
-    for key, value of createValues
+    for key, value of values
       if isType value, Function
         if value.length
           prop.define this, key, value.apply this, args
