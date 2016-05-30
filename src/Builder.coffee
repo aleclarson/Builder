@@ -20,7 +20,6 @@ isType = require "isType"
 define = require "define"
 assert = require "assert"
 Super = require "Super"
-guard = require "guard"
 sync = require "sync"
 
 PropertyMapper = require "./PropertyMapper"
@@ -51,6 +50,21 @@ Builder = NamedFunction "Builder", (name, func) ->
 
   return self
 
+builderProps = Property.Map
+
+  _name: null
+
+  _kind: null
+
+  _createInstance: null
+
+  _initInstance: -> []
+
+  _willBuild: -> []
+
+  _didBuild: -> []
+
+  _cachedBuild: null
 
 # The base instance in the inheritance chain
 # must use this type's prototype with 'Object.create'.
@@ -71,21 +85,11 @@ if isDev
   # These types cannot be inherited from!
   forbiddenKinds = [ String, Boolean, Number, Array, Symbol, Date, RegExp ]
 
-builderProps = Property.Map
+define Builder,
 
-  _name: null
-
-  _kind: null
-
-  _createInstance: null
-
-  _initInstance: -> []
-
-  _willBuild: -> []
-
-  _didBuild: -> []
-
-  _cachedBuild: null
+  # The type of the instance that is currently being initialized.
+  building: get: ->
+    return instanceType
 
 define Builder.prototype,
 
@@ -311,53 +315,24 @@ define Builder.prototype,
     @_didBuild.push func
     return
 
-  build: ->
-    guard => @_build()
-    .fail (error) =>
-      stack = @_tracer() if isDev
-      throwFailure error, { builder: this, stack }
-
   construct: ->
     @build().apply null, arguments
 
-  _build: ->
-
+  build: ->
     return @_cachedBuild if @_cachedBuild
-
     applyChain @_willBuild, this
-
     type = @_createType()
-
     setKind type, @_kind if @_kind
-
     define type, "_builder", this if isDev
-
     applyChain @_didBuild, null, [ type ]
-
     return @_cachedBuild = type
 
   _createType: ->
-
     name = @_name or ""
     createArguments = @__buildArgumentCreator()
     createInstance = @__buildInstanceCreator()
-    constructor = -> createInstance type, createArguments arguments
-
-    if isDev
-      typeTracer = @_tracer
-      return type = NamedFunction name, ->
-        tracers = [
-          Tracer name + ".construct()"
-          typeTracer
-        ]
-        try constructor.apply null, arguments
-        catch error
-          throwFailure error, {
-            type
-            stack: tracers.map (trace) -> trace()
-          }
-
-    return type = NamedFunction name, constructor
+    return type = NamedFunction name, ->
+      createInstance type, createArguments arguments
 
   # Returns the function resposible for transforming and
   # validating the arguments passed to the constructor.

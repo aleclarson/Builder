@@ -1,4 +1,4 @@
-var ArrayOf, Builder, NamedFunction, Property, PropertyMapper, PureObject, Super, Tracer, applyChain, assert, assertType, bindMethod, builderProps, define, emptyFunction, forbiddenKinds, guard, inArray, initTypeCount, instanceID, instanceProps, instanceType, isType, setKind, setType, sync, throwFailure, wrapValue;
+var ArrayOf, Builder, NamedFunction, Property, PropertyMapper, PureObject, Super, Tracer, applyChain, assert, assertType, bindMethod, builderProps, define, emptyFunction, forbiddenKinds, inArray, initTypeCount, instanceID, instanceProps, instanceType, isType, setKind, setType, sync, throwFailure, wrapValue;
 
 require("isDev");
 
@@ -37,8 +37,6 @@ define = require("define");
 assert = require("assert");
 
 Super = require("Super");
-
-guard = require("guard");
 
 sync = require("sync");
 
@@ -79,6 +77,22 @@ module.exports = Builder = NamedFunction("Builder", function(name, func) {
   return self;
 });
 
+builderProps = Property.Map({
+  _name: null,
+  _kind: null,
+  _createInstance: null,
+  _initInstance: function() {
+    return [];
+  },
+  _willBuild: function() {
+    return [];
+  },
+  _didBuild: function() {
+    return [];
+  },
+  _cachedBuild: null
+});
+
 instanceType = null;
 
 if (isDev) {
@@ -99,20 +113,12 @@ if (isDev) {
   forbiddenKinds = [String, Boolean, Number, Array, Symbol, Date, RegExp];
 }
 
-builderProps = Property.Map({
-  _name: null,
-  _kind: null,
-  _createInstance: null,
-  _initInstance: function() {
-    return [];
-  },
-  _willBuild: function() {
-    return [];
-  },
-  _didBuild: function() {
-    return [];
-  },
-  _cachedBuild: null
+define(Builder, {
+  building: {
+    get: function() {
+      return instanceType;
+    }
+  }
 });
 
 define(Builder.prototype, {
@@ -364,28 +370,10 @@ define(Builder.prototype, {
     assertType(func, Function);
     this._didBuild.push(func);
   },
-  build: function() {
-    return guard((function(_this) {
-      return function() {
-        return _this._build();
-      };
-    })(this)).fail((function(_this) {
-      return function(error) {
-        var stack;
-        if (isDev) {
-          stack = _this._tracer();
-        }
-        return throwFailure(error, {
-          builder: _this,
-          stack: stack
-        });
-      };
-    })(this));
-  },
   construct: function() {
     return this.build().apply(null, arguments);
   },
-  _build: function() {
+  build: function() {
     var type;
     if (this._cachedBuild) {
       return this._cachedBuild;
@@ -402,32 +390,13 @@ define(Builder.prototype, {
     return this._cachedBuild = type;
   },
   _createType: function() {
-    var constructor, createArguments, createInstance, name, type, typeTracer;
+    var createArguments, createInstance, name, type;
     name = this._name || "";
     createArguments = this.__buildArgumentCreator();
     createInstance = this.__buildInstanceCreator();
-    constructor = function() {
+    return type = NamedFunction(name, function() {
       return createInstance(type, createArguments(arguments));
-    };
-    if (isDev) {
-      typeTracer = this._tracer;
-      return type = NamedFunction(name, function() {
-        var error, tracers;
-        tracers = [Tracer(name + ".construct()"), typeTracer];
-        try {
-          return constructor.apply(null, arguments);
-        } catch (error1) {
-          error = error1;
-          return throwFailure(error, {
-            type: type,
-            stack: tracers.map(function(trace) {
-              return trace();
-            })
-          });
-        }
-      });
-    }
-    return type = NamedFunction(name, constructor);
+    });
   },
   __buildArgumentCreator: function() {
     return emptyFunction.thatReturnsArgument;
