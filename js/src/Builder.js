@@ -1,4 +1,4 @@
-var ArrayOf, Builder, NamedFunction, Property, PropertyMapper, PureObject, Super, Tracer, applyChain, assert, assertType, bindMethod, builderProps, define, emptyFunction, forbiddenKinds, inArray, initTypeCount, instanceID, instanceProps, instanceType, isType, setKind, setType, sync, throwFailure, wrapValue;
+var ArrayOf, Builder, NamedFunction, Property, PropertyMapper, PureObject, Super, Tracer, applyChain, assert, assertType, bindMethod, builderProps, define, emptyFunction, forbiddenKinds, frozen, inArray, initTypeCount, instanceID, instanceProps, instanceType, isType, mutable, setKind, setType, sync, throwFailure, wrapValue;
 
 require("isDev");
 
@@ -41,6 +41,12 @@ Super = require("Super");
 sync = require("sync");
 
 PropertyMapper = require("./PropertyMapper");
+
+mutable = Property();
+
+frozen = Property({
+  frozen: true
+});
 
 module.exports = Builder = NamedFunction("Builder", function(name, func) {
   var self;
@@ -198,76 +204,74 @@ define(Builder.prototype, {
     });
   },
   defineMethods: function(methods) {
-    var hasInherited, inherited, key, kind, method, prefix, prop;
+    var inherited, key, kind, method, prefix;
     assertType(methods, Object);
-    prefix = this._name ? this._name + "::" : "";
+    prefix = this._name ? this._name + "#" : "";
     kind = this._kind;
-    hasInherited = false;
-    if (kind) {
+    if (isDev) {
       for (key in methods) {
         method = methods[key];
         assertType(method, Function, prefix + key);
-        if (!Super.regex.test(method.toString())) {
-          continue;
+        if (kind) {
+          inherited = Super.findInherited(kind, key);
+          assert(!inherited, "Inherited methods cannot be redefined: '" + (prefix + key) + "'\n\nCall 'overrideMethods' to explicitly override!");
         }
-        inherited = Super.findInherited(kind, key);
-        assert(inherited, "Cannot find method to override for: '" + (prefix + key) + "'!");
-        methods[key] = Super(inherited, method);
-        hasInherited = true;
-      }
-    } else if (isDev) {
-      for (key in methods) {
-        method = methods[key];
-        assertType(method, Function, prefix + key);
       }
     }
-    prop = Property();
+    this._didBuild.push(function(type) {
+      for (key in methods) {
+        method = methods[key];
+        mutable.define(type.prototype, key, method);
+      }
+    });
+  },
+  overrideMethods: function(methods) {
+    var hasInherited, inherited, key, kind, method, prefix;
+    assertType(methods, Object);
+    kind = this._kind;
+    assert(kind, "Must call 'inherits' before 'overrideMethods'!");
+    prefix = this._name ? this._name + "#" : "";
+    hasInherited = false;
+    for (key in methods) {
+      method = methods[key];
+      assertType(method, Function, prefix + key);
+      inherited = Super.findInherited(kind, key);
+      assert(inherited, "Cannot find method to override for: '" + (prefix + key) + "'!");
+      if (!Super.regex.test(method.toString())) {
+        continue;
+      }
+      hasInherited = true;
+      methods[key] = Super(inherited, method);
+    }
     this._didBuild.push(function(type) {
       if (hasInherited) {
         Super.augment(type);
       }
       for (key in methods) {
         method = methods[key];
-        prop.define(type.prototype, key, method);
-      }
-    });
-  },
-  overrideMethods: function(methods) {
-    var inherited, key, kind, method, prefix, prop;
-    assertType(methods, Object);
-    kind = this._kind;
-    assert(this._kind, "Must call 'inherits' before 'overrideMethods'!");
-    prefix = this._name ? this._name + "::" : "";
-    for (key in methods) {
-      method = methods[key];
-      assertType(method, Function, prefix + key);
-      inherited = Super.findInherited(kind, key);
-      assert(inherited, "Cannot find method to override for: '" + (prefix + key) + "'!");
-    }
-    prop = Property();
-    this._didBuild.push(function(type) {
-      for (key in methods) {
-        method = methods[key];
-        prop.define(type.prototype, key, method);
+        mutable.define(type.prototype, key, method);
       }
     });
   },
   mustOverride: function(keys) {
-    var methods, name, prop;
+    var name;
     assertType(keys, Array);
-    name = this._name ? this._name + "::" : "";
-    methods = {};
-    sync.each(keys, function(key) {
-      return methods[key] = function() {
-        throw Error("Must override '" + name + key + "'!");
-      };
-    });
-    prop = Property();
     this._didBuild.push(function(type) {
-      var key, method;
-      for (key in methods) {
-        method = methods[key];
-        prop.define(type.prototype, key, method);
+      var i, key, len;
+      for (i = 0, len = keys.length; i < len; i++) {
+        key = keys[i];
+        mutable.define(type.prototype, key, emptyFunction);
+      }
+    });
+    if (!isDev) {
+      return;
+    }
+    name = this._name ? this._name + "#" : "";
+    this._initInstance.push(function() {
+      var i, key, len;
+      for (i = 0, len = keys.length; i < len; i++) {
+        key = keys[i];
+        assert(this[key] instanceof Function, "Must override '" + name + key + "'!");
       }
     });
   },
@@ -384,7 +388,7 @@ define(Builder.prototype, {
       setKind(type, this._kind);
     }
     if (isDev) {
-      define(type, "_builder", this);
+      frozen.define(type, "_builder", this);
     }
     applyChain(this._didBuild, null, [type]);
     return this._cachedBuild = type;

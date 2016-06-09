@@ -24,6 +24,9 @@ sync = require "sync"
 
 PropertyMapper = require "./PropertyMapper"
 
+mutable = Property()
+frozen = Property { frozen: yes }
+
 module.exports =
 Builder = NamedFunction "Builder", (name, func) ->
 
@@ -166,81 +169,69 @@ define Builder.prototype,
       return
     return
 
-  # If defining a method that is already inherited,
-  # the overriding method can use 'this.__super' to
-  # call the overridden method that was inherited.
   defineMethods: (methods) ->
 
     assertType methods, Object
 
-    prefix = if @_name then @_name + "::" else ""
+    prefix = if @_name then @_name + "#" else ""
 
     kind = @_kind
-    hasInherited = no
-    if kind
+    if isDev
       for key, method of methods
         assertType method, Function, prefix + key
-        continue if not Super.regex.test method.toString()
-        inherited = Super.findInherited kind, key
-        assert inherited, "Cannot find method to override for: '#{prefix + key}'!"
-        methods[key] = Super inherited, method
-        hasInherited = yes
-    else if isDev
-      for key, method of methods
-        assertType method, Function, prefix + key
+        if kind
+          inherited = Super.findInherited kind, key
+          assert not inherited, "Inherited methods cannot be redefined: '#{prefix + key}'\n\nCall 'overrideMethods' to explicitly override!"
 
-    prop = Property()
     @_didBuild.push (type) ->
-      Super.augment type if hasInherited
       for key, method of methods
-        prop.define type.prototype, key, method
+        mutable.define type.prototype, key, method
       return
     return
 
-  # Used by methods that want to override the inherited
-  # method without needing a reference to the overridden method.
   overrideMethods: (methods) ->
 
     assertType methods, Object
 
     kind = @_kind
-    assert @_kind, "Must call 'inherits' before 'overrideMethods'!"
+    assert kind, "Must call 'inherits' before 'overrideMethods'!"
 
-    prefix = if @_name then @_name + "::" else ""
+    prefix = if @_name then @_name + "#" else ""
 
+    hasInherited = no
     for key, method of methods
       assertType method, Function, prefix + key
       inherited = Super.findInherited kind, key
       assert inherited, "Cannot find method to override for: '#{prefix + key}'!"
+      continue if not Super.regex.test method.toString()
+      hasInherited = yes
+      methods[key] = Super inherited, method
 
-    prop = Property()
     @_didBuild.push (type) ->
+      Super.augment type if hasInherited
       for key, method of methods
-        prop.define type.prototype, key, method
+        mutable.define type.prototype, key, method
       return
     return
 
   mustOverride: (keys) ->
 
     assertType keys, Array
-
-    name = if @_name then @_name + "::" else ""
-    methods = {}
-    sync.each keys, (key) ->
-      methods[key] = ->
-        throw Error "Must override '" + name + key + "'!"
-
-    prop = Property()
     @_didBuild.push (type) ->
-      for key, method of methods
-        prop.define type.prototype, key, method
+      for key in keys
+        mutable.define type.prototype, key, emptyFunction
+      return
+
+    return if not isDev
+    name = if @_name then @_name + "#" else ""
+    @_initInstance.push ->
+      for key in keys
+        assert this[key] instanceof Function, "Must override '" + name + key + "'!"
       return
     return
 
   bindMethods: (keys) ->
-
     assert isType(keys, ArrayOf String), "'bindMethods' must be passed an array of strings!"
-
     @_initInstance.push ->
       meta = { obj: this } if isDev
       for key in keys
@@ -323,7 +314,7 @@ define Builder.prototype,
     applyChain @_willBuild, this
     type = @_createType()
     setKind type, @_kind if @_kind
-    define type, "_builder", this if isDev
+    frozen.define type, "_builder", this if isDev
     applyChain @_didBuild, null, [ type ]
     return @_cachedBuild = type
 
