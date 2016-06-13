@@ -42,11 +42,7 @@ sync = require("sync");
 
 PropertyMapper = require("./PropertyMapper");
 
-mutable = Property();
-
-frozen = Property({
-  frozen: true
-});
+mutable = Property.mutable, frozen = Property.frozen;
 
 module.exports = Builder = NamedFunction("Builder", function(name, func) {
   var self;
@@ -398,19 +394,20 @@ define(Builder.prototype, {
     name = this._name || "";
     createArguments = this.__buildArgumentCreator();
     createInstance = this.__buildInstanceCreator();
-    return type = NamedFunction(name, function() {
+    type = NamedFunction(name, function() {
       return createInstance(type, createArguments(arguments));
     });
+    return type;
   },
   __buildArgumentCreator: function() {
     return emptyFunction.thatReturnsArgument;
   },
   __buildInstanceCreator: function() {
-    var createInstance, initInstance;
-    createInstance = this._createInstance;
-    createInstance = createInstance ? wrapValue(createInstance, this.__migrateBaseObject) : this.__createBaseObject;
+    var createBaseObject, createInstance, initInstance;
+    createBaseObject = this._createInstance;
+    createBaseObject = createBaseObject ? wrapValue(createBaseObject, this.__migrateBaseObject) : this.__createBaseObject;
     initInstance = this._initInstance;
-    return function(type, args) {
+    return createInstance = function(type, args) {
       var instance;
       if (!instanceType) {
         instanceType = type;
@@ -418,7 +415,7 @@ define(Builder.prototype, {
           instanceID = type.count++;
         }
       }
-      instance = createInstance.call(null, args);
+      instance = createBaseObject.call(null, args);
       if (instanceType) {
         instanceType = null;
         if (isDev) {

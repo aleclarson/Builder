@@ -24,8 +24,7 @@ sync = require "sync"
 
 PropertyMapper = require "./PropertyMapper"
 
-mutable = Property()
-frozen = Property { frozen: yes }
+{ mutable, frozen } = Property
 
 module.exports =
 Builder = NamedFunction "Builder", (name, func) ->
@@ -322,8 +321,8 @@ define Builder.prototype,
     name = @_name or ""
     createArguments = @__buildArgumentCreator()
     createInstance = @__buildInstanceCreator()
-    return type = NamedFunction name, ->
-      createInstance type, createArguments arguments
+    type = NamedFunction name, -> createInstance type, createArguments arguments
+    return type
 
   # Returns the function resposible for transforming and
   # validating the arguments passed to the constructor.
@@ -335,21 +334,21 @@ define Builder.prototype,
   # that should be done before the constructor returns.
   __buildInstanceCreator: ->
 
-    createInstance = @_createInstance
-    createInstance =
-      if createInstance
-        wrapValue createInstance, @__migrateBaseObject
+    createBaseObject = @_createInstance
+    createBaseObject =
+      if createBaseObject
+        wrapValue createBaseObject, @__migrateBaseObject
       else @__createBaseObject
 
     initInstance = @_initInstance
-    return (type, args) ->
+    return createInstance = (type, args) ->
 
       if not instanceType
         instanceType = type
         if isDev
           instanceID = type.count++
 
-      instance = createInstance.call null, args
+      instance = createBaseObject.call null, args
 
       if instanceType
         instanceType = null
