@@ -1,6 +1,8 @@
-var ArrayOf, Builder, NamedFunction, Property, PropertyMapper, PureObject, Super, Tracer, applyChain, assert, assertType, bindMethod, builderProps, define, emptyFunction, forbiddenKinds, frozen, inArray, initTypeCount, instanceID, instanceProps, instanceType, isType, mutable, setKind, setType, sync, throwFailure, wrapValue;
+var ArrayOf, Builder, NamedFunction, Property, PropertyMapper, PureObject, Super, Tracer, applyChain, assert, assertType, bindMethod, builderProps, define, emptyFunction, forbiddenKinds, frozen, hasEvents, inArray, initTypeCount, instanceID, instanceProps, instanceType, isType, mutable, ref, setKind, setType, sync, throwFailure, wrapValue;
 
 require("isDev");
+
+ref = Property = require("Property"), mutable = ref.mutable, frozen = ref.frozen;
 
 throwFailure = require("failure").throwFailure;
 
@@ -17,8 +19,6 @@ assertType = require("assertType");
 bindMethod = require("bindMethod");
 
 wrapValue = require("wrapValue");
-
-Property = require("Property");
 
 inArray = require("in-array");
 
@@ -42,7 +42,7 @@ sync = require("sync");
 
 PropertyMapper = require("./PropertyMapper");
 
-mutable = Property.mutable, frozen = Property.frozen;
+hasEvents = Symbol("Builder.hasEvents");
 
 module.exports = Builder = NamedFunction("Builder", function(name, func) {
   var self;
@@ -166,6 +166,31 @@ define(Builder.prototype, {
     reactive: true,
     needsValue: true
   }),
+  defineEvents: function(events) {
+    var EventMap, kind;
+    assertType(events, Object);
+    EventMap = require("./inject/EventMap").get();
+    assert(EventMap instanceof Function, "Must inject an 'EventMap' constructor before calling 'this.defineEvents'!");
+    kind = this._kind;
+    if (!this[hasEvents]) {
+      frozen.define(this, hasEvents, true);
+      if (!(kind && kind.prototype[hasEvents])) {
+        this._didBuild.push(function(type) {
+          return frozen.define(type.prototype, hasEvents, true);
+        });
+        this._initInstance.push(function() {
+          return frozen.define(this, "_events", EventMap(events));
+        });
+      }
+      this._didBuild.push(function(type) {
+        return sync.keys(events, function(eventName) {
+          return frozen.define(type.prototype, eventName, function(maxCalls, onNotify) {
+            return this._events(eventName, maxCalls, onNotify);
+          });
+        });
+      });
+    }
+  },
   defineProperties: function(props) {
     assertType(props, Object);
     props = sync.map(props, function(prop, key) {
@@ -182,20 +207,17 @@ define(Builder.prototype, {
   },
   definePrototype: function(props) {
     assertType(props, Object);
-    props = sync.map(props, function(prop) {
-      if (!isType(prop, Object)) {
-        prop = {
-          value: prop
-        };
-      }
-      prop.frozen = true;
-      return Property(prop);
-    });
     this._didBuild.push(function(type) {
       var key, prop;
       for (key in props) {
         prop = props[key];
-        prop.define(type.prototype, key);
+        if (!isType(prop, Object)) {
+          prop = {
+            value: prop
+          };
+        }
+        prop.frozen = true;
+        define(type.prototype, key, prop);
       }
     });
   },
@@ -304,11 +326,12 @@ define(Builder.prototype, {
         enumerable: true
       });
     });
-    this._initInstance.push(function() {
-      var key, prop;
+    this._didBuild.push(function(arg) {
+      var key, prop, prototype;
+      prototype = arg.prototype;
       for (key in props) {
         prop = props[key];
-        prop.define(this, key);
+        prop.define(prototype, key);
       }
     });
   },
@@ -326,11 +349,12 @@ define(Builder.prototype, {
         enumerable: true
       });
     });
-    this._initInstance.push(function() {
-      var key, prop;
+    this._didBuild.push(function(arg) {
+      var key, prop, prototype;
+      prototype = arg.prototype;
       for (key in props) {
         prop = props[key];
-        prop.define(this, key);
+        prop.define(prototype, key);
       }
     });
   },

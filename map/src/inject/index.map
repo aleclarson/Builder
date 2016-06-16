@@ -1,0 +1,10 @@
+{
+  "version": 3,
+  "file": "index.js",
+  "sourceRoot": "../../../src/inject",
+  "sources": [
+    "index.coffee"
+  ],
+  "names": [],
+  "mappings": "AACA,IAAA;;AAAA,UAAA,GACE;EAAA,QAAA,EAAU,OAAA,CAAQ,YAAR,CAAV;;;AAEF,MAAM,CAAC,OAAP,GAAiB,SAAC,GAAD,EAAM,KAAN;SACf,UAAW,CAAA,GAAA,CAAI,CAAC,MAAhB,CAAuB,KAAvB;AADe"
+}

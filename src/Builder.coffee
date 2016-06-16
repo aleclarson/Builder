@@ -1,6 +1,7 @@
 
 require "isDev"
 
+{ mutable, frozen } = Property = require "Property"
 { throwFailure } = require "failure"
 
 NamedFunction = require "NamedFunction"
@@ -10,7 +11,6 @@ applyChain = require "applyChain"
 assertType = require "assertType"
 bindMethod = require "bindMethod"
 wrapValue = require "wrapValue"
-Property = require "Property"
 inArray = require "in-array"
 setType = require "setType"
 setKind = require "setKind"
@@ -24,7 +24,7 @@ sync = require "sync"
 
 PropertyMapper = require "./PropertyMapper"
 
-{ mutable, frozen } = Property
+hasEvents = Symbol "Builder.hasEvents"
 
 module.exports =
 Builder = NamedFunction "Builder", (name, func) ->
@@ -138,6 +138,33 @@ define Builder.prototype,
 
   defineReactiveValues: PropertyMapper { reactive: yes, needsValue: yes }
 
+  defineEvents: (events) ->
+
+    assertType events, Object
+
+    EventMap = require("./inject/EventMap").get()
+    assert EventMap instanceof Function, "Must inject an 'EventMap' constructor before calling 'this.defineEvents'!"
+
+    kind = @_kind
+
+    if not this[hasEvents]
+      frozen.define this, hasEvents, yes
+
+      unless kind and kind::[hasEvents]
+
+        @_didBuild.push (type) ->
+          frozen.define type.prototype, hasEvents, yes
+
+        @_initInstance.push ->
+          frozen.define this, "_events", EventMap events
+
+      @_didBuild.push (type) ->
+        sync.keys events, (eventName) ->
+          frozen.define type.prototype, eventName, (maxCalls, onNotify) ->
+            @_events eventName, maxCalls, onNotify
+
+    return
+
   defineProperties: (props) ->
 
     assertType props, Object
@@ -153,18 +180,12 @@ define Builder.prototype,
     return
 
   definePrototype: (props) ->
-
     assertType props, Object
-
-    props = sync.map props, (prop) ->
-      if not isType prop, Object
-        prop = { value: prop }
-      prop.frozen = yes
-      return Property prop
-
     @_didBuild.push (type) ->
       for key, prop of props
-        prop.define type.prototype, key
+        prop = { value: prop } if not isType prop, Object
+        prop.frozen = yes
+        define type.prototype, key, prop
       return
     return
 
@@ -251,9 +272,9 @@ define Builder.prototype,
         get: -> this[internalKey]
         enumerable: yes
 
-    @_initInstance.push ->
+    @_didBuild.push ({ prototype }) ->
       for key, prop of props
-        prop.define this, key
+        prop.define prototype, key
       return
     return
 
@@ -268,9 +289,9 @@ define Builder.prototype,
         get: -> this[internalKey].get()
         enumerable: yes
 
-    @_initInstance.push ->
+    @_didBuild.push ({ prototype }) ->
       for key, prop of props
-        prop.define this, key
+        prop.define prototype, key
       return
     return
 

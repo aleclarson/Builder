@@ -4,6 +4,7 @@
   "main": "js/src/Builder",
   "dependencies": {
     "ArrayOf": "aleclarson/ArrayOf#1.0.0",
+    "Injectable": "aleclarson/Injectable#1.0.0",
     "NamedFunction": "aleclarson/NamedFunction#2.0.0",
     "Property": "aleclarson/Property#1.0.0",
     "PureObject": "aleclarson/PureObject#1.0.0",
