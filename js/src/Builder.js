@@ -1,10 +1,8 @@
-var ArrayOf, Builder, NamedFunction, Property, PropertyMapper, PureObject, Super, Tracer, applyChain, assert, assertType, bindMethod, builderProps, define, emptyFunction, forbiddenKinds, frozen, hasEvents, inArray, initTypeCount, instanceID, instanceProps, instanceType, isType, mutable, ref, setKind, setType, sync, throwFailure, wrapValue;
+var ArrayOf, Builder, NamedFunction, Property, PropertyMapper, PureObject, Super, Tracer, applyChain, assert, assertType, bindMethod, builderProps, define, emptyFunction, forbiddenKinds, frozen, hasEvents, inArray, initTypeCount, instanceID, instanceProps, instanceType, isType, mutable, ref, setKind, setType, sync, wrapValue;
 
 require("isDev");
 
 ref = Property = require("Property"), mutable = ref.mutable, frozen = ref.frozen;
-
-throwFailure = require("failure").throwFailure;
 
 NamedFunction = require("NamedFunction");
 
@@ -148,6 +146,9 @@ define(Builder.prototype, {
     this._createInstance = function(args) {
       return createInstance.apply(null, args);
     };
+  },
+  trace: function() {
+    define(this, "_shouldTrace", true);
   },
   initInstance: function(func) {
     assertType(func, Function);
@@ -427,10 +428,11 @@ define(Builder.prototype, {
     return emptyFunction.thatReturnsArgument;
   },
   __buildInstanceCreator: function() {
-    var createBaseObject, createInstance, initInstance;
+    var createBaseObject, createInstance, initInstance, shouldTrace;
     createBaseObject = this._createInstance;
     createBaseObject = createBaseObject ? wrapValue(createBaseObject, this.__migrateBaseObject) : this.__createBaseObject;
     initInstance = this._initInstance;
+    shouldTrace = this._shouldTrace;
     return createInstance = function(type, args) {
       var instance;
       if (!instanceType) {
@@ -446,6 +448,12 @@ define(Builder.prototype, {
           instanceProps.define(instance);
           instanceID = null;
         }
+      }
+      if (isDev && shouldTrace) {
+        if (!instance._tracers) {
+          frozen.define(instance, "_tracers", Object.create(null));
+        }
+        instance._tracers.init = Tracer(this._name + "()");
       }
       applyChain(initInstance, instance, [args]);
       return instance;

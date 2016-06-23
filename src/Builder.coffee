@@ -2,7 +2,6 @@
 require "isDev"
 
 { mutable, frozen } = Property = require "Property"
-{ throwFailure } = require "failure"
 
 NamedFunction = require "NamedFunction"
 emptyFunction = require "emptyFunction"
@@ -124,6 +123,10 @@ define Builder.prototype,
 
     @_createInstance = (args) ->
       createInstance.apply null, args
+    return
+
+  trace: ->
+    define this, "_shouldTrace", yes
     return
 
   initInstance: (func) ->
@@ -345,7 +348,7 @@ define Builder.prototype,
     type = NamedFunction name, -> createInstance type, createArguments arguments
     return type
 
-  # Returns the function resposible for transforming and
+  # Returns the function responsible for transforming and
   # validating the arguments passed to the constructor.
   __buildArgumentCreator: ->
     emptyFunction.thatReturnsArgument
@@ -362,6 +365,8 @@ define Builder.prototype,
       else @__createBaseObject
 
     initInstance = @_initInstance
+    shouldTrace = @_shouldTrace
+
     return createInstance = (type, args) ->
 
       if not instanceType
@@ -376,6 +381,13 @@ define Builder.prototype,
         if isDev
           instanceProps.define instance
           instanceID = null
+
+      if isDev and shouldTrace
+
+        if not instance._tracers
+          frozen.define instance, "_tracers", Object.create null
+
+        instance._tracers.init = Tracer @_name + "()"
 
       applyChain initInstance, instance, [ args ]
 
