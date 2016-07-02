@@ -1,4 +1,4 @@
-var ArrayOf, Builder, NamedFunction, Property, PropertyMapper, PureObject, Super, Tracer, applyChain, assert, assertType, bindMethod, builderProps, define, emptyFunction, forbiddenKinds, frozen, hasEvents, inArray, initTypeCount, instanceID, instanceProps, instanceType, isType, mutable, ref, setKind, setType, sync, wrapValue;
+var ArrayOf, Builder, NamedFunction, Property, PropertyMapper, PureObject, Super, Tracer, applyChain, assert, assertType, bind, builderProps, define, emptyFunction, forbiddenKinds, frozen, hasEvents, inArray, initTypeCount, instanceID, instanceProps, instanceType, isType, mutable, ref, setKind, setType, sync, wrapValue;
 
 require("isDev");
 
@@ -13,8 +13,6 @@ PureObject = require("PureObject");
 applyChain = require("applyChain");
 
 assertType = require("assertType");
-
-bindMethod = require("bindMethod");
 
 wrapValue = require("wrapValue");
 
@@ -35,6 +33,8 @@ define = require("define");
 assert = require("assert");
 
 Super = require("Super");
+
+bind = require("bind");
 
 sync = require("sync");
 
@@ -309,7 +309,7 @@ define(Builder.prototype, {
           meta.key = key;
         }
         assertType(this[key], Function, meta);
-        this[key] = bindMethod(this, key);
+        this[key] = bind.method(this, key);
       }
     });
   },

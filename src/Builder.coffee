@@ -8,7 +8,6 @@ emptyFunction = require "emptyFunction"
 PureObject = require "PureObject"
 applyChain = require "applyChain"
 assertType = require "assertType"
-bindMethod = require "bindMethod"
 wrapValue = require "wrapValue"
 inArray = require "in-array"
 setType = require "setType"
@@ -19,6 +18,7 @@ isType = require "isType"
 define = require "define"
 assert = require "assert"
 Super = require "Super"
+bind = require "bind"
 sync = require "sync"
 
 PropertyMapper = require "./PropertyMapper"
@@ -260,7 +260,7 @@ define Builder.prototype,
       for key in keys
         meta.key = key if isDev
         assertType this[key], Function, meta
-        this[key] = bindMethod this, key
+        this[key] = bind.method this, key
       return
     return
 

@@ -12,7 +12,7 @@
     "applyChain": "aleclarson/applyChain#1.0.0",
     "assert": "aleclarson/assert#1.0.0",
     "assertType": "aleclarson/assertType#1.0.0",
-    "bindMethod": "aleclarson/bindMethod#1.0.0",
+    "bind": "aleclarson/bind#1.0.0",
     "define": "aleclarson/define#1.0.0",
     "emptyFunction": "aleclarson/emptyFunction#1.0.0",
     "in-array": "aleclarson/in-array#1.0.0",
