@@ -43,4 +43,4 @@ module.exports = NamedFunction("PropertyMapper", function(options) {
   };
 });
 
-//# sourceMappingURL=../../map/src/PropertyMapper.map
+//# sourceMappingURL=map/PropertyMapper.map

@@ -1,7 +1,7 @@
 {
   "name": "Builder",
   "version": "1.0.0",
-  "main": "js/src/Builder",
+  "main": "js/Builder",
   "dependencies": {
     "ArrayOf": "aleclarson/ArrayOf#1.0.0",
     "Injectable": "aleclarson/Injectable#1.0.0",

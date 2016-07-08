@@ -1,2 +1,2 @@
 
-module.exports =require('./js/src/inject');
+module.exports = require('./js/inject');
