@@ -6,7 +6,7 @@
     "ArrayOf": "aleclarson/ArrayOf#1.0.0",
     "Injectable": "aleclarson/Injectable#1.0.0",
     "NamedFunction": "aleclarson/NamedFunction#2.0.0",
-    "Property": "aleclarson/Property#1.0.0",
+    "Property": "aleclarson/Property#1.1.1",
     "PureObject": "aleclarson/PureObject#1.0.0",
     "Super": "aleclarson/Super#1.0.0",
     "applyChain": "aleclarson/applyChain#1.0.0",

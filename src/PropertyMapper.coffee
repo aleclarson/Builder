@@ -17,7 +17,7 @@ module.exports = NamedFunction "PropertyMapper", (options) -> (values) ->
       instValues = values.apply this, args
       assertType instValues, Object
       for key, value of instValues
-        prop.define this, key, value
+        prop.define this, key, { value }
       return
     return
 
@@ -26,8 +26,8 @@ module.exports = NamedFunction "PropertyMapper", (options) -> (values) ->
     for key, value of values
       if isType value, Function
         if value.length
-          prop.define this, key, value.apply this, args
-        else prop.define this, key, value.call this
-      else prop.define this, key, value
+          value = value.apply this, args
+        else value = value.call this
+      prop.define this, key, { value }
     return
   return

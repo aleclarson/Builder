@@ -19,7 +19,9 @@ module.exports = NamedFunction("PropertyMapper", function(options) {
         assertType(instValues, Object);
         for (key in instValues) {
           value = instValues[key];
-          prop.define(this, key, value);
+          prop.define(this, key, {
+            value: value
+          });
         }
       });
       return;
@@ -31,13 +33,14 @@ module.exports = NamedFunction("PropertyMapper", function(options) {
         value = values[key];
         if (isType(value, Function)) {
           if (value.length) {
-            prop.define(this, key, value.apply(this, args));
+            value = value.apply(this, args);
           } else {
-            prop.define(this, key, value.call(this));
+            value = value.call(this);
           }
-        } else {
-          prop.define(this, key, value);
         }
+        prop.define(this, key, {
+          value: value
+        });
       }
     });
   };

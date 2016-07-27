@@ -148,7 +148,9 @@ define(Builder.prototype, {
     };
   },
   trace: function() {
-    define(this, "_shouldTrace", true);
+    define(this, "_shouldTrace", {
+      value: true
+    });
   },
   initInstance: function(func) {
     assertType(func, Function);
@@ -173,24 +175,34 @@ define(Builder.prototype, {
     EventMap = require("./inject/EventMap").get();
     assert(EventMap instanceof Function, "Must inject an 'EventMap' constructor before calling 'this.defineEvents'!");
     kind = this._kind;
-    if (!this[hasEvents]) {
-      frozen.define(this, hasEvents, true);
-      if (!(kind && kind.prototype[hasEvents])) {
-        this._didBuild.push(function(type) {
-          return frozen.define(type.prototype, hasEvents, true);
-        });
-        this._initInstance.push(function() {
-          return frozen.define(this, "_events", EventMap(events));
-        });
-      }
+    if (this[hasEvents] || (kind && kind.prototype[hasEvents])) {
+      this._initInstance.push(function() {
+        return this._events._addEvents(events);
+      });
+    } else {
       this._didBuild.push(function(type) {
-        return sync.keys(events, function(eventName) {
-          return frozen.define(type.prototype, eventName, function(maxCalls, onNotify) {
-            return this._events(eventName, maxCalls, onNotify);
-          });
+        return frozen.define(type.prototype, hasEvents, {
+          value: true
+        });
+      });
+      this._initInstance.push(function() {
+        return frozen.define(this, "_events", {
+          value: EventMap(events)
         });
       });
     }
+    this[hasEvents] || frozen.define(this, hasEvents, {
+      value: true
+    });
+    return this._didBuild.push(function(type) {
+      return sync.keys(events, function(eventName) {
+        return frozen.define(type.prototype, eventName, {
+          value: function(maxCalls, onNotify) {
+            return this._events(eventName, maxCalls, onNotify);
+          }
+        });
+      });
+    });
   },
   defineProperties: function(props) {
     assertType(props, Object);
@@ -217,7 +229,9 @@ define(Builder.prototype, {
             value: prop
           };
         }
-        prop.frozen = true;
+        if (!(prop.set || prop.writable)) {
+          prop.frozen = true;
+        }
         define(type.prototype, key, prop);
       }
     });
@@ -225,7 +239,7 @@ define(Builder.prototype, {
   defineMethods: function(methods) {
     var inherited, key, kind, method, prefix;
     assertType(methods, Object);
-    prefix = this._name ? this._name + "#" : "";
+    prefix = this._name ? this._name + "::" : "";
     kind = this._kind;
     if (isDev) {
       for (key in methods) {
@@ -240,7 +254,9 @@ define(Builder.prototype, {
     this._didBuild.push(function(type) {
       for (key in methods) {
         method = methods[key];
-        mutable.define(type.prototype, key, method);
+        mutable.define(type.prototype, key, {
+          value: method
+        });
       }
     });
   },
@@ -249,7 +265,7 @@ define(Builder.prototype, {
     assertType(methods, Object);
     kind = this._kind;
     assert(kind, "Must call 'inherits' before 'overrideMethods'!");
-    prefix = this._name ? this._name + "#" : "";
+    prefix = this._name ? this._name + "::" : "";
     hasInherited = false;
     for (key in methods) {
       method = methods[key];
@@ -268,33 +284,49 @@ define(Builder.prototype, {
       }
       for (key in methods) {
         method = methods[key];
-        mutable.define(type.prototype, key, method);
+        mutable.define(type.prototype, key, {
+          value: method
+        });
       }
     });
   },
-  mustOverride: function(keys) {
+  mustOverride: function() {
+    return console.warn("DEPRECATED: (" + this._name + ") Please use 'defineHooks' instead of 'mustOverride'!");
+  },
+  defineHooks: function(hooks) {
     var name;
-    assertType(keys, Array);
+    assertType(hooks, Object);
+    name = this._name ? this._name + "::" : "";
     this._didBuild.push(function(type) {
-      var i, key, len;
-      for (i = 0, len = keys.length; i < len; i++) {
-        key = keys[i];
-        mutable.define(type.prototype, key, emptyFunction);
+      var defaultValue, key, value;
+      for (key in hooks) {
+        defaultValue = hooks[key];
+        if (defaultValue instanceof Function) {
+          value = defaultValue;
+        } else if (isDev) {
+          value = function() {
+            throw Error("Must override '" + (name + key) + "'!");
+          };
+        } else {
+          value = emptyFunction;
+        }
+        type.prototype[key] = value;
       }
     });
-    if (!isDev) {
-      return;
-    }
-    name = this._name ? this._name + "#" : "";
+  },
+  defineBoundMethods: function(methods) {
+    assertType(methods, Object);
     this._initInstance.push(function() {
-      var i, key, len;
-      for (i = 0, len = keys.length; i < len; i++) {
-        key = keys[i];
-        assert(this[key] instanceof Function, "Must override '" + name + key + "'!");
+      var key, method;
+      for (key in methods) {
+        method = methods[key];
+        assertType(method, Function, key);
+        this[key] = bind.func(method, this);
       }
     });
   },
   bindMethods: function(keys) {
+    console.warn("DEPRECATED: (" + this._name + ") Please use 'defineBoundMethods' instead of 'bindMethods'!");
     assert(isType(keys, ArrayOf(String)), "'bindMethods' must be passed an array of strings!");
     this._initInstance.push(function() {
       var i, key, len, meta;
@@ -313,8 +345,41 @@ define(Builder.prototype, {
       }
     });
   },
+  defineGetters: function(getters) {
+    assertType(getters, Object);
+    this._didBuild.push(function(arg) {
+      var getter, key, prototype;
+      prototype = arg.prototype;
+      for (key in getters) {
+        getter = getters[key];
+        frozen.define(prototype, key, {
+          get: getter
+        });
+      }
+    });
+  },
+  defineLazyGetters: function(getters) {
+    console.warn("DEPRECATED: (" + this._name + ") Use 'defineGetters' instead of 'defineLazyGetters'!");
+    assertType(getters, Object);
+    getters = sync.map(getters, function(getter) {
+      return function() {
+        return getter.call(this).get();
+      };
+    });
+    this._didBuild.push(function(arg) {
+      var getter, key, prototype;
+      prototype = arg.prototype;
+      for (key in getters) {
+        getter = getters[key];
+        frozen.define(prototype, key, {
+          get: getter
+        });
+      }
+    });
+  },
   exposeGetters: function(keys) {
     var props;
+    console.warn("DEPRECATED: (" + this._name + ") Please use 'defineGetters' instead of 'exposeGetters'!");
     assertType(keys, Array);
     props = {};
     sync.each(keys, function(key) {
@@ -338,6 +403,7 @@ define(Builder.prototype, {
   },
   exposeLazyGetters: function(keys) {
     var props;
+    console.warn("DEPRECATED: (" + this._name + ") Please use 'defineLazyGetters' instead of 'exposeLazyGetters'!");
     assertType(keys, Array);
     props = {};
     sync.each(keys, function(key) {
@@ -409,7 +475,9 @@ define(Builder.prototype, {
       setKind(type, this._kind);
     }
     if (isDev) {
-      frozen.define(type, "_builder", this);
+      frozen.define(type, "_builder", {
+        value: this
+      });
     }
     applyChain(this._didBuild, null, [type]);
     return this._cachedBuild = type;
@@ -451,7 +519,9 @@ define(Builder.prototype, {
       }
       if (isDev && shouldTrace) {
         if (!instance._tracers) {
-          frozen.define(instance, "_tracers", Object.create(null));
+          frozen.define(instance, "_tracers", {
+            value: Object.create(null)
+          });
         }
         instance._tracers.init = Tracer(this._name + "()");
       }

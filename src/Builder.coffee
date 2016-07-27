@@ -84,7 +84,15 @@ if isDev
     __name: get: -> @constructor.getName() + "_" + @__id
 
   # These types cannot be inherited from!
-  forbiddenKinds = [ String, Boolean, Number, Array, Symbol, Date, RegExp ]
+  forbiddenKinds = [
+    String
+    Boolean
+    Number
+    Array
+    Symbol
+    Date
+    RegExp
+  ]
 
 define Builder,
 
@@ -126,7 +134,7 @@ define Builder.prototype,
     return
 
   trace: ->
-    define this, "_shouldTrace", yes
+    define this, "_shouldTrace", { value: yes }
     return
 
   initInstance: (func) ->
@@ -149,24 +157,27 @@ define Builder.prototype,
     assert EventMap instanceof Function, "Must inject an 'EventMap' constructor before calling 'this.defineEvents'!"
 
     kind = @_kind
+    if this[hasEvents] or (kind and kind::[hasEvents])
 
-    if not this[hasEvents]
-      frozen.define this, hasEvents, yes
+      @_initInstance.push ->
+        @_events._addEvents events
 
-      unless kind and kind::[hasEvents]
-
-        @_didBuild.push (type) ->
-          frozen.define type.prototype, hasEvents, yes
-
-        @_initInstance.push ->
-          frozen.define this, "_events", EventMap events
+    else
 
       @_didBuild.push (type) ->
-        sync.keys events, (eventName) ->
-          frozen.define type.prototype, eventName, (maxCalls, onNotify) ->
-            @_events eventName, maxCalls, onNotify
+        frozen.define type.prototype, hasEvents, { value: yes }
 
-    return
+      @_initInstance.push ->
+        frozen.define this, "_events", { value: EventMap events }
+
+    this[hasEvents] or
+    frozen.define this, hasEvents, { value: yes }
+
+    @_didBuild.push (type) ->
+      sync.keys events, (eventName) ->
+        frozen.define type.prototype, eventName,
+          value: (maxCalls, onNotify) ->
+            @_events eventName, maxCalls, onNotify
 
   defineProperties: (props) ->
 
@@ -187,7 +198,7 @@ define Builder.prototype,
     @_didBuild.push (type) ->
       for key, prop of props
         prop = { value: prop } if not isType prop, Object
-        prop.frozen = yes
+        prop.frozen = yes unless prop.set or prop.writable
         define type.prototype, key, prop
       return
     return
@@ -196,7 +207,7 @@ define Builder.prototype,
 
     assertType methods, Object
 
-    prefix = if @_name then @_name + "#" else ""
+    prefix = if @_name then @_name + "::" else ""
 
     kind = @_kind
     if isDev
@@ -208,7 +219,7 @@ define Builder.prototype,
 
     @_didBuild.push (type) ->
       for key, method of methods
-        mutable.define type.prototype, key, method
+        mutable.define type.prototype, key, { value: method }
       return
     return
 
@@ -219,7 +230,7 @@ define Builder.prototype,
     kind = @_kind
     assert kind, "Must call 'inherits' before 'overrideMethods'!"
 
-    prefix = if @_name then @_name + "#" else ""
+    prefix = if @_name then @_name + "::" else ""
 
     hasInherited = no
     for key, method of methods
@@ -233,27 +244,39 @@ define Builder.prototype,
     @_didBuild.push (type) ->
       Super.augment type if hasInherited
       for key, method of methods
-        mutable.define type.prototype, key, method
+        mutable.define type.prototype, key, { value: method }
       return
     return
 
-  mustOverride: (keys) ->
+  mustOverride: ->
+    console.warn "DEPRECATED: (#{@_name}) Please use 'defineHooks' instead of 'mustOverride'!"
 
-    assertType keys, Array
+  defineHooks: (hooks) ->
+    assertType hooks, Object
+    name = if @_name then @_name + "::" else ""
     @_didBuild.push (type) ->
-      for key in keys
-        mutable.define type.prototype, key, emptyFunction
+      for key, defaultValue of hooks
+        if defaultValue instanceof Function
+          value = defaultValue
+        else if isDev
+          value = -> throw Error "Must override '#{name + key}'!"
+        else
+          value = emptyFunction
+        type.prototype[key] = value
       return
+    return
 
-    return if not isDev
-    name = if @_name then @_name + "#" else ""
+  defineBoundMethods: (methods) ->
+    assertType methods, Object
     @_initInstance.push ->
-      for key in keys
-        assert this[key] instanceof Function, "Must override '" + name + key + "'!"
+      for key, method of methods
+        assertType method, Function, key
+        this[key] = bind.func method, this
       return
     return
 
   bindMethods: (keys) ->
+    console.warn "DEPRECATED: (#{@_name}) Please use 'defineBoundMethods' instead of 'bindMethods'!"
     assert isType(keys, ArrayOf String), "'bindMethods' must be passed an array of strings!"
     @_initInstance.push ->
       meta = { obj: this } if isDev
@@ -264,7 +287,28 @@ define Builder.prototype,
       return
     return
 
+  defineGetters: (getters) ->
+    assertType getters, Object
+    @_didBuild.push ({ prototype }) ->
+      for key, getter of getters
+        frozen.define prototype, key, { get: getter }
+      return
+    return
+
+  defineLazyGetters: (getters) ->
+    console.warn "DEPRECATED: (#{@_name}) Use 'defineGetters' instead of 'defineLazyGetters'!"
+    assertType getters, Object
+    getters = sync.map getters, (getter) ->
+      return -> getter.call(this).get()
+    @_didBuild.push ({ prototype }) ->
+      for key, getter of getters
+        frozen.define prototype, key, { get: getter }
+      return
+    return
+
   exposeGetters: (keys) ->
+
+    console.warn "DEPRECATED: (#{@_name}) Please use 'defineGetters' instead of 'exposeGetters'!"
 
     assertType keys, Array
 
@@ -282,6 +326,8 @@ define Builder.prototype,
     return
 
   exposeLazyGetters: (keys) ->
+
+    console.warn "DEPRECATED: (#{@_name}) Please use 'defineLazyGetters' instead of 'exposeLazyGetters'!"
 
     assertType keys, Array
 
@@ -337,7 +383,7 @@ define Builder.prototype,
     applyChain @_willBuild, this
     type = @_createType()
     setKind type, @_kind if @_kind
-    frozen.define type, "_builder", this if isDev
+    frozen.define type, "_builder", { value: this } if isDev
     applyChain @_didBuild, null, [ type ]
     return @_cachedBuild = type
 
@@ -385,7 +431,8 @@ define Builder.prototype,
       if isDev and shouldTrace
 
         if not instance._tracers
-          frozen.define instance, "_tracers", Object.create null
+          frozen.define instance, "_tracers",
+            value: Object.create null
 
         instance._tracers.init = Tracer @_name + "()"
 
