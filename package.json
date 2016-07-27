@@ -1,6 +1,6 @@
 {
   "name": "Builder",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "main": "js/Builder",
   "dependencies": {
     "ArrayOf": "aleclarson/ArrayOf#1.0.0",
