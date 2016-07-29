@@ -11,7 +11,7 @@
     "Super": "aleclarson/Super#1.0.0",
     "applyChain": "aleclarson/applyChain#1.0.0",
     "assert": "aleclarson/assert#1.0.0",
-    "assertType": "aleclarson/assertType#1.0.0",
+    "assertType": "aleclarson/assertType#2.0.0",
     "bind": "aleclarson/bind#1.0.0",
     "define": "aleclarson/define#1.0.0",
     "emptyFunction": "aleclarson/emptyFunction#1.0.0",
