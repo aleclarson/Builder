@@ -79,7 +79,10 @@ module.exports = Builder = NamedFunction("Builder", function(name, func) {
 
 builderProps = Property.Map({
   _name: null,
-  _kind: null,
+  _kind: false,
+  _defaultKind: function() {
+    return Object;
+  },
   _createInstance: null,
   _initInstance: function() {
     return [];
@@ -123,9 +126,7 @@ define(Builder, {
 
 define(Builder.prototype, {
   inherits: function(kind) {
-    assert(!this._kind, "'kind' is already defined!");
-    assert(kind !== Object, "'Cannot explicitly inherit from Object! The default 'kind' is Object, so just dont call 'inherits'!");
-    assert(kind !== Function, "Cannot explicitly inherit from Function! Must pass a second argument to the Builder constructor!");
+    assert(this._kind === false, "'kind' is already defined!");
     assert(!inArray(forbiddenKinds, kind), function() {
       return "Cannot inherit from '" + kind.name + "'!";
     });
@@ -133,19 +134,14 @@ define(Builder.prototype, {
       assert(kind instanceof Function, "'kind' must be a kind of Function (or null)!");
     }
     this._kind = kind;
-    this._willBuild.push(function() {
-      return this._createInstance != null ? this._createInstance : this._createInstance = kind === null ? PureObject.create : function(args) {
-        return kind.apply(null, args);
-      };
-    });
   },
   createInstance: function(createInstance) {
     assertType(createInstance, Function);
     assert(!this._createInstance, "'createInstance' is already defined!");
-    assert(this._kind, "Must call 'inherits' before 'createInstance'!");
-    this._createInstance = function(args) {
+    assert(this._kind !== false, "Must call 'inherits' before 'createInstance'!");
+    this._createInstance = bind.toString(createInstance, function(args) {
       return createInstance.apply(null, args);
-    };
+    });
   },
   trace: function() {
     define(this, "_shouldTrace", {
@@ -471,14 +467,10 @@ define(Builder.prototype, {
     }
     applyChain(this._willBuild, this);
     type = this._createType();
-    if (this._kind) {
-      setKind(type, this._kind);
-    }
-    if (isDev) {
-      frozen.define(type, "_builder", {
-        value: this
-      });
-    }
+    setKind(type, this._kind);
+    isDev && frozen.define(type, "_builder", {
+      value: this
+    });
     applyChain(this._didBuild, null, [type]);
     return this._cachedBuild = type;
   },
@@ -492,16 +484,40 @@ define(Builder.prototype, {
     });
     return type;
   },
+  _getBaseCreator: function() {
+    var createInstance, kind;
+    createInstance = this._createInstance;
+    if (!createInstance) {
+      kind = this._kind;
+      if (kind === false) {
+        kind = this._defaultKind;
+      }
+      if (kind === Object) {
+        return this._defaultBaseCreator;
+      }
+      createInstance = kind === null ? PureObject.create : function(args) {
+        return kind.apply(null, args);
+      };
+    }
+    return function(args) {
+      var instance;
+      instance = createInstance.call(null, args);
+      instanceType && setType(instance, instanceType);
+      return instance;
+    };
+  },
+  _defaultBaseCreator: function() {
+    return Object.create(instanceType.prototype);
+  },
   __buildArgumentCreator: function() {
     return emptyFunction.thatReturnsArgument;
   },
   __buildInstanceCreator: function() {
-    var createBaseObject, createInstance, initInstance, shouldTrace;
-    createBaseObject = this._createInstance;
-    createBaseObject = createBaseObject ? wrapValue(createBaseObject, this.__migrateBaseObject) : this.__createBaseObject;
+    var constructor, createInstance, initInstance, shouldTrace;
+    createInstance = this._getBaseCreator();
     initInstance = this._initInstance;
     shouldTrace = this._shouldTrace;
-    return createInstance = function(type, args) {
+    return constructor = function(type, args) {
       var instance;
       if (!instanceType) {
         instanceType = type;
@@ -509,7 +525,7 @@ define(Builder.prototype, {
           instanceID = type.count++;
         }
       }
-      instance = createBaseObject.call(null, args);
+      instance = createInstance.call(null, args);
       if (instanceType) {
         instanceType = null;
         if (isDev) {
@@ -528,19 +544,6 @@ define(Builder.prototype, {
       applyChain(initInstance, instance, [args]);
       return instance;
     };
-  },
-  __migrateBaseObject: function(createInstance) {
-    return function(args) {
-      var instance;
-      instance = createInstance.call(null, args);
-      if (instanceType) {
-        setType(instance, instanceType);
-      }
-      return instance;
-    };
-  },
-  __createBaseObject: function() {
-    return Object.create(instanceType.prototype);
   }
 });
 

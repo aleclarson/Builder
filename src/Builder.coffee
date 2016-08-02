@@ -55,7 +55,9 @@ builderProps = Property.Map
 
   _name: null
 
-  _kind: null
+  _kind: no
+
+  _defaultKind: -> Object
 
   _createInstance: null
 
@@ -106,31 +108,22 @@ define Builder.prototype,
   #       to be used, you must call 'createInstance' manually!
   inherits: (kind) ->
 
-    assert not @_kind, "'kind' is already defined!"
-    assert kind isnt Object, "'Cannot explicitly inherit from Object! The default 'kind' is Object, so just dont call 'inherits'!"
-    assert kind isnt Function, "Cannot explicitly inherit from Function! Must pass a second argument to the Builder constructor!"
+    assert @_kind is no, "'kind' is already defined!"
     assert not inArray(forbiddenKinds, kind), -> "Cannot inherit from '#{kind.name}'!"
 
     if kind isnt null
       assert kind instanceof Function, "'kind' must be a kind of Function (or null)!"
 
     @_kind = kind
-
-    # Allow types to override the default 'createInstance'.
-    @_willBuild.push ->
-      @_createInstance ?=
-        if kind is null then PureObject.create
-        else (args) -> kind.apply null, args
     return
 
   createInstance: (createInstance) ->
 
     assertType createInstance, Function
     assert not @_createInstance, "'createInstance' is already defined!"
-    assert @_kind, "Must call 'inherits' before 'createInstance'!"
+    assert @_kind isnt no, "Must call 'inherits' before 'createInstance'!"
 
-    @_createInstance = (args) ->
-      createInstance.apply null, args
+    @_createInstance = bind.toString createInstance, (args) -> createInstance.apply null, args
     return
 
   trace: ->
@@ -382,8 +375,8 @@ define Builder.prototype,
     return @_cachedBuild if @_cachedBuild
     applyChain @_willBuild, this
     type = @_createType()
-    setKind type, @_kind if @_kind
-    frozen.define type, "_builder", { value: this } if isDev
+    setKind type, @_kind
+    isDev and frozen.define type, "_builder", { value: this }
     applyChain @_didBuild, null, [ type ]
     return @_cachedBuild = type
 
@@ -394,6 +387,30 @@ define Builder.prototype,
     type = NamedFunction name, -> createInstance type, createArguments arguments
     return type
 
+  _getBaseCreator: ->
+
+    createInstance = @_createInstance
+
+    unless createInstance
+      kind = @_kind
+      kind = @_defaultKind if kind is no
+
+      if kind is Object
+        return @_defaultBaseCreator
+
+      createInstance =
+        if kind is null
+          PureObject.create
+        else (args) -> kind.apply null, args
+
+    return (args) ->
+      instance = createInstance.call null, args
+      instanceType and setType instance, instanceType
+      return instance
+
+  _defaultBaseCreator: ->
+    Object.create instanceType.prototype
+
   # Returns the function responsible for transforming and
   # validating the arguments passed to the constructor.
   __buildArgumentCreator: ->
@@ -403,24 +420,17 @@ define Builder.prototype,
   # each new instance's properties and any other work
   # that should be done before the constructor returns.
   __buildInstanceCreator: ->
-
-    createBaseObject = @_createInstance
-    createBaseObject =
-      if createBaseObject
-        wrapValue createBaseObject, @__migrateBaseObject
-      else @__createBaseObject
-
+    createInstance = @_getBaseCreator()
     initInstance = @_initInstance
     shouldTrace = @_shouldTrace
-
-    return createInstance = (type, args) ->
+    return constructor = (type, args) ->
 
       if not instanceType
         instanceType = type
         if isDev
           instanceID = type.count++
 
-      instance = createBaseObject.call null, args
+      instance = createInstance.call null, args
 
       if instanceType
         instanceType = null
@@ -439,17 +449,3 @@ define Builder.prototype,
       applyChain initInstance, instance, [ args ]
 
       return instance
-
-  # Sometimes the base object is not created by a
-  # Builder; so we have to set the instance type
-  # here instead of in '_createBaseObject'.
-  __migrateBaseObject: (createInstance) -> (args) ->
-    instance = createInstance.call null, args
-    setType instance, instanceType if instanceType
-    return instance
-
-  # This is where we "associate" a new instance
-  # with the prototype of the topmost type
-  # in the inheritance chain.
-  __createBaseObject: ->
-    Object.create instanceType.prototype
