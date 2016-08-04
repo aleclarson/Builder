@@ -261,7 +261,7 @@ define Builder.prototype,
 
   defineBoundMethods: (methods) ->
     assertType methods, Object
-    @_initInstance.push ->
+    @_initInstance.unshift ->
       for key, method of methods
         assertType method, Function, key
         this[key] = bind.func method, this

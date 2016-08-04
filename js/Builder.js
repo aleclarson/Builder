@@ -312,7 +312,7 @@ define(Builder.prototype, {
   },
   defineBoundMethods: function(methods) {
     assertType(methods, Object);
-    this._initInstance.push(function() {
+    this._initInstance.unshift(function() {
       var key, method;
       for (key in methods) {
         method = methods[key];
