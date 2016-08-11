@@ -221,7 +221,7 @@ define Builder.prototype,
     assertType methods, Object
 
     kind = @_kind
-    assert kind, "Must call 'inherits' before 'overrideMethods'!"
+    assert kind isnt no, "Must call 'inherits' before 'overrideMethods'!"
 
     prefix = if @_name then @_name + "::" else ""
 
@@ -391,17 +391,18 @@ define Builder.prototype,
 
     createInstance = @_createInstance
 
-    unless createInstance
-      kind = @_kind
-      kind = @_defaultKind if kind is no
+    if @_kind is no
+      kind = @_kind = @_defaultKind
+    else kind = @_kind
 
-      if kind is Object
+    unless createInstance
+
+      if kind is @_defaultKind
         return @_defaultBaseCreator
 
-      createInstance =
-        if kind is null
-          PureObject.create
-        else (args) -> kind.apply null, args
+      if kind is null
+        createInstance = PureObject.create
+      else createInstance = (args) -> kind.apply null, args
 
     return (args) ->
       instance = createInstance.call null, args

@@ -260,7 +260,7 @@ define(Builder.prototype, {
     var hasInherited, inherited, key, kind, method, prefix;
     assertType(methods, Object);
     kind = this._kind;
-    assert(kind, "Must call 'inherits' before 'overrideMethods'!");
+    assert(kind !== false, "Must call 'inherits' before 'overrideMethods'!");
     prefix = this._name ? this._name + "::" : "";
     hasInherited = false;
     for (key in methods) {
@@ -487,17 +487,22 @@ define(Builder.prototype, {
   _getBaseCreator: function() {
     var createInstance, kind;
     createInstance = this._createInstance;
-    if (!createInstance) {
+    if (this._kind === false) {
+      kind = this._kind = this._defaultKind;
+    } else {
       kind = this._kind;
-      if (kind === false) {
-        kind = this._defaultKind;
-      }
-      if (kind === Object) {
+    }
+    if (!createInstance) {
+      if (kind === this._defaultKind) {
         return this._defaultBaseCreator;
       }
-      createInstance = kind === null ? PureObject.create : function(args) {
-        return kind.apply(null, args);
-      };
+      if (kind === null) {
+        createInstance = PureObject.create;
+      } else {
+        createInstance = function(args) {
+          return kind.apply(null, args);
+        };
+      }
     }
     return function(args) {
       var instance;
