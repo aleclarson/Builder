@@ -1,15 +1,14 @@
 
 require "isDev"
 
-{ mutable, frozen } = Property = require "Property"
+{mutable, frozen} = Property = require "Property"
 
 NamedFunction = require "NamedFunction"
 emptyFunction = require "emptyFunction"
 ValueMapper = require "ValueMapper"
 PureObject = require "PureObject"
-applyChain = require "applyChain"
 assertType = require "assertType"
-wrapValue = require "wrapValue"
+applyChain = require "applyChain"
 inArray = require "in-array"
 setType = require "setType"
 setKind = require "setKind"
@@ -20,6 +19,11 @@ define = require "define"
 Super = require "Super"
 bind = require "bind"
 sync = require "sync"
+
+# The base instance in the inheritance chain
+# must use this type's prototype with 'Object.create'.
+instanceType = null
+instanceID = null
 
 Builder = NamedFunction "Builder", (name, func) ->
 
@@ -34,64 +38,22 @@ Builder = NamedFunction "Builder", (name, func) ->
   if func
     assertType func, Function
     self._kind = Function
-    self._createInstance = ->
-      instance = -> func.apply instance, arguments
-      if isDev then instance.toString = -> func.toString()
-      return instance
+    if isDev
+      self._createInstance = ->
+        instance = bind.toString func, ->
+          func.apply instance, arguments
+    else
+      self._createInstance = ->
+        instance = -> func.apply instance, arguments
 
   if isDev
-    self._didBuild.push initTypeCount
+    self._didBuildPhases.push initTypeCount
     Object.defineProperty self, "_tracer",
       value: Tracer "Builder.construct()", { skip: 2 }
 
   return self
 
 module.exports = Builder
-
-builderProps = Property.Map
-
-  _name: null
-
-  _kind: no
-
-  _defaultKind: -> Object
-
-  _createInstance: null
-
-  _initInstance: -> []
-
-  _willBuild: -> []
-
-  _didBuild: -> []
-
-  _cachedBuild: null
-
-# The base instance in the inheritance chain
-# must use this type's prototype with 'Object.create'.
-instanceType = null
-
-if isDev
-
-  # The base instance has its '__id' and '__name'
-  # created by keeping a unique identifier for each type.
-  instanceID = null
-  initTypeCount = (type) ->
-    type.count = 0
-
-  instanceProps = Property.Map
-    __id: -> instanceID
-    __name: get: -> @constructor.getName() + "_" + @__id
-
-  # These types cannot be inherited from!
-  forbiddenKinds = [
-    String
-    Boolean
-    Number
-    Array
-    Symbol
-    Date
-    RegExp
-  ]
 
 define Builder,
 
@@ -127,7 +89,11 @@ define Builder.prototype,
     if @_kind is no
       throw Error "Must call 'inherits' before 'createInstance'!"
 
-    @_createInstance = bind.toString func, (args) -> func.apply null, args
+    createInstance = (args) ->
+      func.apply null, args
+
+    isDev and createInstance = bind.toString func, createInstance
+    @_createInstance = createInstance
     return
 
   trace: ->
@@ -136,25 +102,29 @@ define Builder.prototype,
 
   initInstance: (func) ->
     assertType func, Function
-    @_initInstance.push (args) ->
+
+    initInstance = (args) ->
       func.apply this, args
+
+    isDev and initInstance = bind.toString func, initInstance
+    @_initPhases.push initInstance
     return
 
   defineValues: (values) ->
     values = ValueMapper { values, mutable: yes }
-    @_initInstance.push (args) ->
+    @_initPhases.push (args) ->
       values.define this, args
     return
 
   defineFrozenValues: (values) ->
     values = ValueMapper { values, frozen: yes }
-    @_initInstance.push (args) ->
+    @_initPhases.push (args) ->
       values.define this, args
     return
 
   defineReactiveValues: (values) ->
     values = ValueMapper { values, reactive: yes }
-    @_initInstance.push (args) ->
+    @_initPhases.push (args) ->
       values.define this, args
     return
 
@@ -169,21 +139,21 @@ define Builder.prototype,
     kind = @_kind
     if @__hasEvents or (kind and kind::__hasEvents)
 
-      @_initInstance.push ->
+      @_initPhases.push ->
         @_events._addEvents events
 
     else
 
-      @_didBuild.push (type) ->
+      @_didBuildPhases.push (type) ->
         frozen.define type.prototype, "__hasEvents", { value: yes }
 
-      @_initInstance.push ->
+      @_initPhases.push ->
         frozen.define this, "_events", { value: EventMap events }
 
     @__hasEvents or
     frozen.define this, "__hasEvents", { value: yes }
 
-    @_didBuild.push (type) ->
+    @_didBuildPhases.push (type) ->
       sync.keys events, (eventName) ->
         frozen.define type.prototype, eventName,
           value: (maxCalls, onNotify) ->
@@ -197,7 +167,7 @@ define Builder.prototype,
       assertType prop, Object, key
       return Property prop
 
-    @_initInstance.push ->
+    @_initPhases.push ->
       for key, prop of props
         prop.define this, key
       return
@@ -205,7 +175,7 @@ define Builder.prototype,
 
   definePrototype: (props) ->
     assertType props, Object
-    @_didBuild.push (type) ->
+    @_didBuildPhases.push (type) ->
       for key, prop of props
         prop = { value: prop } if not isType prop, Object
         prop.frozen = yes unless prop.set or prop.writable
@@ -219,7 +189,7 @@ define Builder.prototype,
 
     isDev and @_assertUniqueMethodNames methods
 
-    @_didBuild.push (type) ->
+    @_didBuildPhases.push (type) ->
       for key, method of methods
         mutable.define type.prototype, key, { value: method }
       return
@@ -234,7 +204,7 @@ define Builder.prototype,
 
     hasInherited = @_inheritMethods methods
 
-    @_didBuild.push (type) ->
+    @_didBuildPhases.push (type) ->
       hasInherited and Super.augment type
       for key, method of methods
         mutable.define type.prototype, key, { value: method }
@@ -245,7 +215,7 @@ define Builder.prototype,
   defineHooks: (hooks) ->
     assertType hooks, Object
     name = if @_name then @_name + "::" else ""
-    @_didBuild.push (type) ->
+    @_didBuildPhases.push (type) ->
       for key, defaultValue of hooks
         if defaultValue instanceof Function
           value = defaultValue
@@ -259,16 +229,20 @@ define Builder.prototype,
 
   defineBoundMethods: (methods) ->
     assertType methods, Object
-    @_initInstance.unshift ->
-      for key, method of methods
-        assertType method, Function, key
-        this[key] = bind.func method, this
+    @_didBuildPhases.push (type) ->
+      {prototype} = type
+      sync.each methods, (method, key) ->
+        define prototype, key, get: ->
+          value = bind.func method, this
+          frozen.define this, key, {value}
+          return value
       return
     return
 
   defineGetters: (getters) ->
     assertType getters, Object
-    @_didBuild.push ({ prototype }) ->
+    @_didBuildPhases.push (type) ->
+      {prototype} = type
       for key, getter of getters
         frozen.define prototype, key, { get: getter }
       return
@@ -282,7 +256,7 @@ define Builder.prototype,
       options = { value: options } if not isType options, Object
       return Property options
 
-    @_didBuild.push (type) ->
+    @_didBuildPhases.push (type) ->
       for key, prop of props
         prop.define type, key
       return
@@ -297,12 +271,12 @@ define Builder.prototype,
 
   willBuild: (func) ->
     assertType func, Function
-    @_willBuild.push func
+    @_willBuildPhases.push func
     return
 
   didBuild: (func) ->
     assertType func, Function
-    @_didBuild.push func
+    @_didBuildPhases.push func
     return
 
   construct: ->
@@ -310,18 +284,19 @@ define Builder.prototype,
 
   build: ->
     return @_cachedBuild if @_cachedBuild
-    applyChain @_willBuild, this
+    applyChain @_willBuildPhases, this
     type = @_createType()
     setKind type, @_kind
-    isDev and frozen.define type, "_builder", { value: this }
-    applyChain @_didBuild, null, [ type ]
+    isDev and frozen.define type, "_builder", {value: this}
+    applyChain @_didBuildPhases, null, [type]
     return @_cachedBuild = type
 
   _createType: ->
     name = @_name or ""
-    createArguments = @__buildArgumentCreator()
+    createArgs = @__buildArgCreator()
     createInstance = @__buildInstanceCreator()
-    type = NamedFunction name, -> createInstance type, createArguments arguments
+    type = NamedFunction name, ->
+      createInstance type, createArgs arguments
     return type
 
   _getBaseCreator: ->
@@ -384,7 +359,7 @@ define Builder.prototype,
 
   # Returns the function responsible for transforming and
   # validating the arguments passed to the constructor.
-  __buildArgumentCreator: ->
+  __buildArgCreator: ->
     emptyFunction.thatReturnsArgument
 
   # Returns the function responsible for initializing
@@ -392,7 +367,7 @@ define Builder.prototype,
   # that should be done before the constructor returns.
   __buildInstanceCreator: ->
     createInstance = @_getBaseCreator()
-    initInstance = @_initInstance
+    instPhases = @_initPhases
     shouldTrace = @_shouldTrace
     return constructor = (type, args) ->
 
@@ -417,6 +392,48 @@ define Builder.prototype,
 
         instance._tracers.init = Tracer @_name + "()"
 
-      applyChain initInstance, instance, [ args ]
+      applyChain instPhases, instance, [ args ]
 
       return instance
+
+#
+# Helpers
+#
+
+builderProps = Property.Map
+
+  _name: null
+
+  _kind: no
+
+  _defaultKind: -> Object
+
+  _createInstance: null
+
+  _initPhases: -> []
+
+  _willBuildPhases: -> []
+
+  _didBuildPhases: -> []
+
+  _cachedBuild: null
+
+if isDev
+
+  initTypeCount = (type) ->
+    type.count = 0
+
+  instanceProps = Property.Map
+    __id: -> instanceID
+    __name: get: -> @constructor.getName() + "_" + @__id
+
+  # These types cannot be inherited from!
+  forbiddenKinds = [
+    String
+    Boolean
+    Number
+    Array
+    Symbol
+    Date
+    RegExp
+  ]
