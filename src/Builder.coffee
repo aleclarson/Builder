@@ -47,7 +47,7 @@ Builder = NamedFunction "Builder", (name, func) ->
         instance = -> func.apply instance, arguments
 
   if isDev
-    self._didBuildPhases.push initTypeCount
+    self.didBuild initTypeCount
     Object.defineProperty self, "_tracer",
       value: Tracer "Builder.construct()", { skip: 2 }
 
@@ -144,7 +144,7 @@ define Builder.prototype,
 
     else
 
-      @_didBuildPhases.push (type) ->
+      @didBuild (type) ->
         frozen.define type.prototype, "__hasEvents", { value: yes }
 
       @_initPhases.push ->
@@ -153,11 +153,11 @@ define Builder.prototype,
     @__hasEvents or
     frozen.define this, "__hasEvents", { value: yes }
 
-    @_didBuildPhases.push (type) ->
+    @didBuild (type) ->
       sync.keys events, (eventName) ->
         frozen.define type.prototype, eventName,
-          value: (maxCalls, onNotify) ->
-            @_events eventName, maxCalls, onNotify
+          value: (maxCalls, callback) ->
+            @_events eventName, maxCalls, callback
 
   defineProperties: (props) ->
 
@@ -175,7 +175,7 @@ define Builder.prototype,
 
   definePrototype: (props) ->
     assertType props, Object
-    @_didBuildPhases.push (type) ->
+    @didBuild (type) ->
       for key, prop of props
         prop = { value: prop } if not isType prop, Object
         prop.frozen = yes unless prop.set or prop.writable
@@ -189,7 +189,7 @@ define Builder.prototype,
 
     isDev and @_assertUniqueMethodNames methods
 
-    @_didBuildPhases.push (type) ->
+    @didBuild (type) ->
       for key, method of methods
         mutable.define type.prototype, key, { value: method }
       return
@@ -204,7 +204,7 @@ define Builder.prototype,
 
     hasInherited = @_inheritMethods methods
 
-    @_didBuildPhases.push (type) ->
+    @didBuild (type) ->
       hasInherited and Super.augment type
       for key, method of methods
         mutable.define type.prototype, key, { value: method }
@@ -215,7 +215,7 @@ define Builder.prototype,
   defineHooks: (hooks) ->
     assertType hooks, Object
     name = if @_name then @_name + "::" else ""
-    @_didBuildPhases.push (type) ->
+    @didBuild (type) ->
       for key, defaultValue of hooks
         if defaultValue instanceof Function
           value = defaultValue
@@ -229,7 +229,7 @@ define Builder.prototype,
 
   defineBoundMethods: (methods) ->
     assertType methods, Object
-    @_didBuildPhases.push (type) ->
+    @didBuild (type) ->
       {prototype} = type
       sync.each methods, (method, key) ->
         define prototype, key, get: ->
@@ -241,7 +241,7 @@ define Builder.prototype,
 
   defineGetters: (getters) ->
     assertType getters, Object
-    @_didBuildPhases.push (type) ->
+    @didBuild (type) ->
       {prototype} = type
       for key, getter of getters
         frozen.define prototype, key, { get: getter }
@@ -256,7 +256,7 @@ define Builder.prototype,
       options = { value: options } if not isType options, Object
       return Property options
 
-    @_didBuildPhases.push (type) ->
+    @didBuild (type) ->
       for key, prop of props
         prop.define type, key
       return

@@ -68,7 +68,7 @@ Builder = NamedFunction("Builder", function(name, func) {
     }
   }
   if (isDev) {
-    self._didBuildPhases.push(initTypeCount);
+    self.didBuild(initTypeCount);
     Object.defineProperty(self, "_tracer", {
       value: Tracer("Builder.construct()", {
         skip: 2
@@ -170,7 +170,7 @@ define(Builder.prototype, {
         return this._events._addEvents(events);
       });
     } else {
-      this._didBuildPhases.push(function(type) {
+      this.didBuild(function(type) {
         return frozen.define(type.prototype, "__hasEvents", {
           value: true
         });
@@ -184,11 +184,11 @@ define(Builder.prototype, {
     this.__hasEvents || frozen.define(this, "__hasEvents", {
       value: true
     });
-    return this._didBuildPhases.push(function(type) {
+    return this.didBuild(function(type) {
       return sync.keys(events, function(eventName) {
         return frozen.define(type.prototype, eventName, {
-          value: function(maxCalls, onNotify) {
-            return this._events(eventName, maxCalls, onNotify);
+          value: function(maxCalls, callback) {
+            return this._events(eventName, maxCalls, callback);
           }
         });
       });
@@ -210,7 +210,7 @@ define(Builder.prototype, {
   },
   definePrototype: function(props) {
     assertType(props, Object);
-    this._didBuildPhases.push(function(type) {
+    this.didBuild(function(type) {
       var key, prop;
       for (key in props) {
         prop = props[key];
@@ -229,7 +229,7 @@ define(Builder.prototype, {
   defineMethods: function(methods) {
     assertType(methods, Object);
     isDev && this._assertUniqueMethodNames(methods);
-    this._didBuildPhases.push(function(type) {
+    this.didBuild(function(type) {
       var key, method;
       for (key in methods) {
         method = methods[key];
@@ -246,7 +246,7 @@ define(Builder.prototype, {
       throw Error("Must call 'inherits' before 'overrideMethods'!");
     }
     hasInherited = this._inheritMethods(methods);
-    this._didBuildPhases.push(function(type) {
+    this.didBuild(function(type) {
       var key, method;
       hasInherited && Super.augment(type);
       for (key in methods) {
@@ -261,7 +261,7 @@ define(Builder.prototype, {
     var name;
     assertType(hooks, Object);
     name = this._name ? this._name + "::" : "";
-    this._didBuildPhases.push(function(type) {
+    this.didBuild(function(type) {
       var defaultValue, key, value;
       for (key in hooks) {
         defaultValue = hooks[key];
@@ -280,7 +280,7 @@ define(Builder.prototype, {
   },
   defineBoundMethods: function(methods) {
     assertType(methods, Object);
-    this._didBuildPhases.push(function(type) {
+    this.didBuild(function(type) {
       var prototype;
       prototype = type.prototype;
       sync.each(methods, function(method, key) {
@@ -299,7 +299,7 @@ define(Builder.prototype, {
   },
   defineGetters: function(getters) {
     assertType(getters, Object);
-    this._didBuildPhases.push(function(type) {
+    this.didBuild(function(type) {
       var getter, key, prototype;
       prototype = type.prototype;
       for (key in getters) {
@@ -321,7 +321,7 @@ define(Builder.prototype, {
       }
       return Property(options);
     });
-    this._didBuildPhases.push(function(type) {
+    this.didBuild(function(type) {
       var key, prop;
       for (key in props) {
         prop = props[key];
