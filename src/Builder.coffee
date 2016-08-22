@@ -293,10 +293,10 @@ define Builder.prototype,
 
   _createType: ->
     name = @_name or ""
-    createArgs = @__buildArgCreator()
-    createInstance = @__buildInstanceCreator()
+    buildArgs = @__createArgBuilder()
+    buildInstance = @__createInstanceBuilder()
     type = NamedFunction name, ->
-      createInstance type, createArgs arguments
+      buildInstance type, buildArgs arguments
     return type
 
   _getBaseCreator: ->
@@ -359,17 +359,17 @@ define Builder.prototype,
 
   # Returns the function responsible for transforming and
   # validating the arguments passed to the constructor.
-  __buildArgCreator: ->
+  __createArgBuilder: ->
     emptyFunction.thatReturnsArgument
 
   # Returns the function responsible for initializing
   # each new instance's properties and any other work
   # that should be done before the constructor returns.
-  __buildInstanceCreator: ->
+  __createInstanceBuilder: ->
     createInstance = @_getBaseCreator()
     instPhases = @_initPhases
     shouldTrace = @_shouldTrace
-    return constructor = (type, args) ->
+    return buildInstance = (type, args) ->
 
       if not instanceType
         instanceType = type
