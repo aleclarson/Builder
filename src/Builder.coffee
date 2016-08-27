@@ -295,8 +295,21 @@ define Builder.prototype,
     name = @_name or ""
     buildArgs = @__createArgBuilder()
     buildInstance = @__createInstanceBuilder()
-    type = NamedFunction name, ->
-      buildInstance type, buildArgs arguments
+
+    if isDev
+      assertType buildArgs, Function
+      assertType buildInstance, Function
+      return Function(
+        "buildArgs",
+        "buildInstance",
+        "var type;" +
+        "return type = function #{name}() {\n" +
+        "  return buildInstance(type, buildArgs(arguments));\n" +
+        "}"
+      ) buildArgs, buildInstance
+
+    type = -> buildInstance type, buildArgs arguments
+    type.getName = -> name
     return type
 
   _getBaseCreator: ->

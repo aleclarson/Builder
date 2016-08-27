@@ -368,9 +368,17 @@ define(Builder.prototype, {
     name = this._name || "";
     buildArgs = this.__createArgBuilder();
     buildInstance = this.__createInstanceBuilder();
-    type = NamedFunction(name, function() {
+    if (isDev) {
+      assertType(buildArgs, Function);
+      assertType(buildInstance, Function);
+      return Function("buildArgs", "buildInstance", "var type;" + ("return type = function " + name + "() {\n") + "  return buildInstance(type, buildArgs(arguments));\n" + "}")(buildArgs, buildInstance);
+    }
+    type = function() {
       return buildInstance(type, buildArgs(arguments));
-    });
+    };
+    type.getName = function() {
+      return name;
+    };
     return type;
   },
   _getBaseCreator: function() {
