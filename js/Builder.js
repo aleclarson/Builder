@@ -1,4 +1,4 @@
-var ArrayOf, Builder, NamedFunction, Property, PureObject, Super, Tracer, ValueMapper, applyChain, assertType, bind, builderProps, define, emptyFunction, forbiddenKinds, frozen, inArray, initTypeCount, instanceID, instanceProps, instanceType, isType, mutable, ref, setKind, setType, sync;
+var Builder, NamedFunction, Property, PureObject, Super, Tracer, ValueMapper, applyChain, assertType, bind, builderProps, define, emptyFunction, forbiddenKinds, frozen, inArray, initTypeCount, instanceID, instanceProps, instanceType, isType, mutable, ref, setKind, setType, sync;
 
 require("isDev");
 
@@ -21,8 +21,6 @@ inArray = require("in-array");
 setType = require("setType");
 
 setKind = require("setKind");
-
-ArrayOf = require("ArrayOf");
 
 Tracer = require("tracer");
 
