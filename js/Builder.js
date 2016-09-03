@@ -1,4 +1,4 @@
-var Builder, NamedFunction, Property, PureObject, Super, Tracer, ValueMapper, applyChain, assertType, bind, builderProps, define, emptyFunction, forbiddenKinds, frozen, inArray, initTypeCount, instanceID, instanceProps, instanceType, isType, mutable, ref, setKind, setType, sync;
+var Builder, NamedFunction, Property, PureObject, Super, Tracer, ValueMapper, applyChain, assertType, bind, define, emptyFunction, forbiddenKinds, frozen, inArray, initTypeCount, instanceID, instanceType, isType, mutable, ref, setKind, setType, sync;
 
 require("isDev");
 
@@ -38,41 +38,29 @@ instanceType = null;
 
 instanceID = null;
 
-Builder = NamedFunction("Builder", function(name, func) {
-  var self;
-  self = Object.create(Builder.prototype);
-  builderProps.define(self);
-  if (name) {
+Builder = NamedFunction("Builder", function(name) {
+  var phases, self;
+  if (name != null) {
     assertType(name, String);
-    self._name = name;
   }
-  if (func) {
-    assertType(func, Function);
-    self._kind = Function;
-    if (isDev) {
-      self._createInstance = function() {
-        var instance;
-        return instance = bind.toString(func, function() {
-          return func.apply(instance, arguments);
-        });
-      };
-    } else {
-      self._createInstance = function() {
-        var instance;
-        return instance = function() {
-          return func.apply(instance, arguments);
-        };
-      };
+  phases = {
+    init: [],
+    willBuild: [],
+    didBuild: []
+  };
+  self = Object.create(Builder.prototype, {
+    _name: {
+      value: name
+    },
+    _kind: {
+      value: false,
+      writable: true
+    },
+    _phases: {
+      value: phases
     }
-  }
-  if (isDev) {
-    self.didBuild(initTypeCount);
-    Object.defineProperty(self, "_tracer", {
-      value: Tracer("Builder.construct()", {
-        skip: 2
-      })
-    });
-  }
+  });
+  isDev && self.didBuild(initTypeCount);
   return self;
 });
 
@@ -112,11 +100,18 @@ define(Builder.prototype, {
       return func.apply(null, args);
     };
     isDev && (createInstance = bind.toString(func, createInstance));
-    this._createInstance = createInstance;
+    frozen.define(this, "_createInstance", {
+      value: createInstance
+    });
   },
   trace: function() {
-    define(this, "_shouldTrace", {
-      value: true
+    if (isDev) {
+      return;
+    }
+    this._phases.init.push(function() {
+      return mutable.define(this, "__stack", {
+        value: Error()
+      });
     });
   },
   initInstance: function(func) {
@@ -126,14 +121,43 @@ define(Builder.prototype, {
       return func.apply(this, args);
     };
     isDev && (initInstance = bind.toString(func, initInstance));
-    this._initPhases.push(initInstance);
+    this._phases.init.push(initInstance);
+  },
+  defineFunction: function(func) {
+    assertType(func, Function);
+    this._kind = Function;
+    this._createInstance = function() {
+      var self;
+      self = function() {
+        return func.apply(self, arguments);
+      };
+      isDev && (self.toString = function() {
+        return func.toString();
+      });
+      return self;
+    };
+  },
+  defineListeners: function(listeners) {
+    var values;
+    values = ValueMapper({
+      values: listeners,
+      define: function(obj, key, value) {
+        frozen.define(obj, key, {
+          value: value
+        });
+        return value.start();
+      }
+    });
+    this._phases.init.push(function(args) {
+      return values.define(this, args);
+    });
   },
   defineValues: function(values) {
     values = ValueMapper({
       values: values,
       mutable: true
     });
-    this._initPhases.push(function(args) {
+    this._phases.init.push(function(args) {
       return values.define(this, args);
     });
   },
@@ -142,7 +166,7 @@ define(Builder.prototype, {
       values: values,
       frozen: true
     });
-    this._initPhases.push(function(args) {
+    this._phases.init.push(function(args) {
       return values.define(this, args);
     });
   },
@@ -151,20 +175,19 @@ define(Builder.prototype, {
       values: values,
       reactive: true
     });
-    this._initPhases.push(function(args) {
+    this._phases.init.push(function(args) {
       return values.define(this, args);
     });
   },
   defineEvents: function(events) {
-    var EventMap, kind;
+    var EventMap;
     assertType(events, Object);
     EventMap = require("./inject/EventMap").get();
     if (!(EventMap instanceof Function)) {
       throw Error("Must inject an 'EventMap' constructor before calling 'defineEvents'!");
     }
-    kind = this._kind;
-    if (this.__hasEvents || (kind && kind.prototype.__hasEvents)) {
-      this._initPhases.push(function() {
+    if (this.__hasEvents || (this._kind && this._kind.prototype.__hasEvents)) {
+      this._phases.init.push(function() {
         return this._events._addEvents(events);
       });
     } else {
@@ -173,7 +196,7 @@ define(Builder.prototype, {
           value: true
         });
       });
-      this._initPhases.push(function() {
+      this._phases.init.push(function() {
         return frozen.define(this, "_events", {
           value: EventMap(events)
         });
@@ -198,7 +221,7 @@ define(Builder.prototype, {
       assertType(prop, Object, key);
       return Property(prop);
     });
-    this._initPhases.push(function() {
+    this._phases.init.push(function() {
       var key, prop;
       for (key in props) {
         prop = props[key];
@@ -298,12 +321,13 @@ define(Builder.prototype, {
   defineGetters: function(getters) {
     assertType(getters, Object);
     this.didBuild(function(type) {
-      var getter, key, prototype;
+      var get, key, prototype;
       prototype = type.prototype;
       for (key in getters) {
-        getter = getters[key];
+        get = getters[key];
+        assertType(get, Function, key);
         frozen.define(prototype, key, {
-          get: getter
+          get: get
         });
       }
     });
@@ -338,28 +362,22 @@ define(Builder.prototype, {
   },
   willBuild: function(func) {
     assertType(func, Function);
-    this._willBuildPhases.push(func);
+    this._phases.willBuild.push(func);
   },
   didBuild: function(func) {
     assertType(func, Function);
-    this._didBuildPhases.push(func);
+    this._phases.didBuild.push(func);
   },
   construct: function() {
     return this.build().apply(null, arguments);
   },
   build: function() {
     var type;
-    if (this._cachedBuild) {
-      return this._cachedBuild;
-    }
-    applyChain(this._willBuildPhases, this);
+    applyChain(this._phases.willBuild, this);
     type = this._createType();
     setKind(type, this._kind);
-    isDev && frozen.define(type, "_builder", {
-      value: this
-    });
-    applyChain(this._didBuildPhases, null, [type]);
-    return this._cachedBuild = type;
+    applyChain(this._phases.didBuild, null, [type]);
+    return type;
   },
   _createType: function() {
     var buildArgs, buildInstance, name, type;
@@ -380,14 +398,15 @@ define(Builder.prototype, {
     return type;
   },
   _getBaseCreator: function() {
-    var createInstance, kind;
+    var createInstance, defaultKind, kind;
+    defaultKind = this._defaultKind || Object;
     if (this._kind === false) {
-      this._kind = this._defaultKind;
+      this._kind = defaultKind;
     }
     kind = this._kind;
     createInstance = this._createInstance;
     if (!createInstance) {
-      if (kind === this._defaultKind) {
+      if (kind === defaultKind) {
         return this._defaultBaseCreator;
       }
       if (kind === null) {
@@ -446,33 +465,22 @@ define(Builder.prototype, {
     return emptyFunction.thatReturnsArgument;
   },
   __createInstanceBuilder: function() {
-    var buildInstance, createInstance, instPhases, shouldTrace;
+    var buildInstance, createInstance, instPhases;
     createInstance = this._getBaseCreator();
-    instPhases = this._initPhases;
-    shouldTrace = this._shouldTrace;
+    instPhases = this._phases.init;
     return buildInstance = function(type, args) {
       var instance;
       if (!instanceType) {
         instanceType = type;
-        if (isDev) {
-          instanceID = type.count++;
-        }
+        isDev && (instanceID = type.__count++);
       }
       instance = createInstance.call(null, args);
       if (instanceType) {
+        isDev && frozen.define(instance, "__name", {
+          value: instanceType.getName() + "_" + instanceID
+        });
         instanceType = null;
-        if (isDev) {
-          instanceProps.define(instance);
-          instanceID = null;
-        }
-      }
-      if (isDev && shouldTrace) {
-        if (!instance._tracers) {
-          frozen.define(instance, "_tracers", {
-            value: Object.create(null)
-          });
-        }
-        instance._tracers.init = Tracer(this._name + "()");
+        isDev && (instanceID = null);
       }
       applyChain(instPhases, instance, [args]);
       return instance;
@@ -480,39 +488,12 @@ define(Builder.prototype, {
   }
 });
 
-builderProps = Property.Map({
-  _name: null,
-  _kind: false,
-  _defaultKind: function() {
-    return Object;
-  },
-  _createInstance: null,
-  _initPhases: function() {
-    return [];
-  },
-  _willBuildPhases: function() {
-    return [];
-  },
-  _didBuildPhases: function() {
-    return [];
-  },
-  _cachedBuild: null
-});
-
 if (isDev) {
   initTypeCount = function(type) {
-    return type.count = 0;
+    return mutable.define(type, "__count", {
+      value: 0
+    });
   };
-  instanceProps = Property.Map({
-    __id: function() {
-      return instanceID;
-    },
-    __name: {
-      get: function() {
-        return this.constructor.getName() + "_" + this.__id;
-      }
-    }
-  });
   forbiddenKinds = [String, Boolean, Number, Array, Symbol, Date, RegExp];
 }
 
