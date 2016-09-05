@@ -19,6 +19,8 @@ Super = require "Super"
 bind = require "bind"
 sync = require "sync"
 
+injected = require "./injectable"
+
 # The base instance in the inheritance chain
 # must use this type's prototype with 'Object.create'.
 instanceType = null
@@ -86,8 +88,7 @@ define Builder.prototype,
     return
 
   trace: ->
-    return if isDev
-    @_phases.init.push ->
+    isDev and @_phases.init.push ->
       mutable.define this, "__stack", value: Error()
     return
 
@@ -110,18 +111,6 @@ define Builder.prototype,
       return self
     return
 
-  defineListeners: (listeners) ->
-
-    values = ValueMapper
-      values: listeners
-      define: (obj, key, value) ->
-        frozen.define obj, key, {value}
-        value.start()
-
-    @_phases.init.push (args) ->
-      values.define this, args
-    return
-
   defineValues: (values) ->
     values = ValueMapper {values, mutable: yes}
     @_phases.init.push (args) ->
@@ -140,31 +129,51 @@ define Builder.prototype,
       values.define this, args
     return
 
-  defineEvents: (events) ->
+  defineEvents: (eventConfigs) ->
+    assertType eventConfigs, Object
 
-    assertType events, Object
+    Event = injected.get "Event"
+    unless Event instanceof Function
+      throw Error "'defineEvents' requires an injected 'Event' constructor!"
 
-    EventMap = require("./inject/EventMap").get()
-    unless EventMap instanceof Function
-      throw Error "Must inject an 'EventMap' constructor before calling 'defineEvents'!"
+    @_phases.init.push ->
+      events = @__events or Object.create null
 
-    if @__hasEvents or (@_kind and @_kind::__hasEvents)
-      @_phases.init.push ->
-        @_events._addEvents events
-    else
-      @didBuild (type) ->
-        frozen.define type.prototype, "__hasEvents", { value: yes }
-      @_phases.init.push ->
-        frozen.define this, "_events", { value: EventMap events }
+      self = this
+      sync.each eventConfigs, (argTypes, key) ->
+        event = Event()
+        events[key] = ->
+          isDev and argTypes and validateArgs arguments, argTypes
+          event.emit.apply null, arguments
+          return
+        frozen.define self, key, {value: event.listenable}
+        return
 
-    @__hasEvents or
-    frozen.define this, "__hasEvents", { value: yes }
+      @__events or
+      frozen.define this, "__events", {value: events}
+      return
+    return
 
-    @didBuild (type) ->
-      sync.keys events, (eventName) ->
-        frozen.define type.prototype, eventName,
-          value: (maxCalls, callback) ->
-            @_events eventName, maxCalls, callback
+  defineListeners: (createListeners) ->
+    assertType createListeners, Function
+
+    Event = injected.get "Event"
+    unless Event instanceof Function
+      throw Error "'defineListeners' requires an injected 'Event' constructor!"
+
+    @_phases.init.push (args) ->
+      listeners = @__listeners or []
+      onAttach = Event
+        .didAttach (listener) -> listeners.push listener.start()
+        .start()
+
+      createListeners.apply this, args
+      onAttach.detach()
+
+      @__listeners or
+      frozen.define this, "__listeners", {value: listeners}
+      return
+    return
 
   defineProperties: (props) ->
 
@@ -417,6 +426,12 @@ if isDev
 
   initTypeCount = (type) ->
     mutable.define type, "__count", {value: 0}
+
+  validateArgs = (args, argTypes) ->
+    argNames = Object.keys argTypes
+    for name, index in argNames
+      assertType args[index], argTypes[name], name
+    return
 
   # These types cannot be inherited from!
   forbiddenKinds = [

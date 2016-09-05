@@ -1,4 +1,4 @@
-var Builder, NamedFunction, Property, PureObject, Super, Tracer, ValueMapper, applyChain, assertType, bind, define, emptyFunction, forbiddenKinds, frozen, inArray, initTypeCount, instanceID, instanceType, isType, mutable, ref, setKind, setType, sync;
+var Builder, NamedFunction, Property, PureObject, Super, Tracer, ValueMapper, applyChain, assertType, bind, define, emptyFunction, forbiddenKinds, frozen, inArray, initTypeCount, injected, instanceID, instanceType, isType, mutable, ref, setKind, setType, sync, validateArgs;
 
 require("isDev");
 
@@ -33,6 +33,8 @@ Super = require("Super");
 bind = require("bind");
 
 sync = require("sync");
+
+injected = require("./injectable");
 
 instanceType = null;
 
@@ -105,10 +107,7 @@ define(Builder.prototype, {
     });
   },
   trace: function() {
-    if (isDev) {
-      return;
-    }
-    this._phases.init.push(function() {
+    isDev && this._phases.init.push(function() {
       return mutable.define(this, "__stack", {
         value: Error()
       });
@@ -137,21 +136,6 @@ define(Builder.prototype, {
       return self;
     };
   },
-  defineListeners: function(listeners) {
-    var values;
-    values = ValueMapper({
-      values: listeners,
-      define: function(obj, key, value) {
-        frozen.define(obj, key, {
-          value: value
-        });
-        return value.start();
-      }
-    });
-    this._phases.init.push(function(args) {
-      return values.define(this, args);
-    });
-  },
   defineValues: function(values) {
     values = ValueMapper({
       values: values,
@@ -179,39 +163,50 @@ define(Builder.prototype, {
       return values.define(this, args);
     });
   },
-  defineEvents: function(events) {
-    var EventMap;
-    assertType(events, Object);
-    EventMap = require("./inject/EventMap").get();
-    if (!(EventMap instanceof Function)) {
-      throw Error("Must inject an 'EventMap' constructor before calling 'defineEvents'!");
+  defineEvents: function(eventConfigs) {
+    var Event;
+    assertType(eventConfigs, Object);
+    Event = injected.get("Event");
+    if (!(Event instanceof Function)) {
+      throw Error("'defineEvents' requires an injected 'Event' constructor!");
     }
-    if (this.__hasEvents || (this._kind && this._kind.prototype.__hasEvents)) {
-      this._phases.init.push(function() {
-        return this._events._addEvents(events);
-      });
-    } else {
-      this.didBuild(function(type) {
-        return frozen.define(type.prototype, "__hasEvents", {
-          value: true
+    this._phases.init.push(function() {
+      var events, self;
+      events = this.__events || Object.create(null);
+      self = this;
+      sync.each(eventConfigs, function(argTypes, key) {
+        var event;
+        event = Event();
+        events[key] = function() {
+          isDev && argTypes && validateArgs(arguments, argTypes);
+          event.emit.apply(null, arguments);
+        };
+        frozen.define(self, key, {
+          value: event.listenable
         });
       });
-      this._phases.init.push(function() {
-        return frozen.define(this, "_events", {
-          value: EventMap(events)
-        });
+      this.__events || frozen.define(this, "__events", {
+        value: events
       });
-    }
-    this.__hasEvents || frozen.define(this, "__hasEvents", {
-      value: true
     });
-    return this.didBuild(function(type) {
-      return sync.keys(events, function(eventName) {
-        return frozen.define(type.prototype, eventName, {
-          value: function(maxCalls, callback) {
-            return this._events(eventName, maxCalls, callback);
-          }
-        });
+  },
+  defineListeners: function(createListeners) {
+    var Event;
+    assertType(createListeners, Function);
+    Event = injected.get("Event");
+    if (!(Event instanceof Function)) {
+      throw Error("'defineListeners' requires an injected 'Event' constructor!");
+    }
+    this._phases.init.push(function(args) {
+      var listeners, onAttach;
+      listeners = this.__listeners || [];
+      onAttach = Event.didAttach(function(listener) {
+        return listeners.push(listener.start());
+      }).start();
+      createListeners.apply(this, args);
+      onAttach.detach();
+      this.__listeners || frozen.define(this, "__listeners", {
+        value: listeners
       });
     });
   },
@@ -493,6 +488,14 @@ if (isDev) {
     return mutable.define(type, "__count", {
       value: 0
     });
+  };
+  validateArgs = function(args, argTypes) {
+    var argNames, i, index, len, name;
+    argNames = Object.keys(argTypes);
+    for (index = i = 0, len = argNames.length; i < len; index = ++i) {
+      name = argNames[index];
+      assertType(args[index], argTypes[name], name);
+    }
   };
   forbiddenKinds = [String, Boolean, Number, Array, Symbol, Date, RegExp];
 }
