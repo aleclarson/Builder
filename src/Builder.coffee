@@ -313,11 +313,11 @@ define Builder.prototype,
         "buildInstance",
         "var type;" +
         "return type = function #{name}() {\n" +
-        "  return buildInstance(type, buildArgs(arguments));\n" +
+        "  return buildInstance(this, type, buildArgs(this, arguments));\n" +
         "}"
       ) buildArgs, buildInstance
 
-    type = -> buildInstance type, buildArgs arguments
+    type = -> buildInstance this, type, buildArgs this, arguments
     type.getName = -> name
     return type
 
@@ -389,13 +389,13 @@ define Builder.prototype,
   __createInstanceBuilder: ->
     createInstance = @_getBaseCreator()
     instPhases = @_phases.init
-    return buildInstance = (type, args) ->
+    return buildInstance = (context, type, args) ->
 
       if not instanceType
         instanceType = type
         isDev and instanceID = type.__count++
 
-      instance = createInstance.call null, args
+      instance = createInstance.call context, args
 
       if instanceType
 
