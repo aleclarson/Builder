@@ -77,8 +77,7 @@ define Builder.prototype,
     if @_createInstance
       throw Error "'createInstance' has already been called!"
 
-    if @_kind is no
-      throw Error "Must call 'inherits' before 'createInstance'!"
+    @_kind = Object if @_kind is no
 
     createInstance = (args) ->
       func.apply null, args
