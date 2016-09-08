@@ -70,19 +70,14 @@ define Builder.prototype,
     @_kind = kind
     return
 
-  createInstance: (func) ->
+  createInstance: (createInstance) ->
 
-    assertType func, Function
+    assertType createInstance, Function
 
     if @_createInstance
       throw Error "'createInstance' has already been called!"
 
     @_kind = Object if @_kind is no
-
-    createInstance = (args) ->
-      func.apply null, args
-
-    isDev and createInstance = bind.toString func, createInstance
     frozen.define this, "_createInstance", {value: createInstance}
     return
 
@@ -342,12 +337,10 @@ define Builder.prototype,
 
       if kind is null
         createInstance = PureObject.create
-      else
-        createInstance = (args) ->
-          kind.apply null, args
+      else createInstance = kind
 
     return (args) ->
-      instance = createInstance.call null, args
+      instance = createInstance.apply this, args
       instanceType and setType instance, instanceType
       return instance
 
