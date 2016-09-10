@@ -313,11 +313,15 @@ define Builder.prototype,
         "buildInstance",
         "var type;" +
         "return type = function #{name}() {\n" +
-        "  return buildInstance(this, type, buildArgs(this, arguments));\n" +
+        "  var context = this === global ? null : this;\n" +
+        "  return buildInstance(context, type, buildArgs(context, arguments));\n" +
         "}"
       ) buildArgs, buildInstance
 
-    type = -> buildInstance this, type, buildArgs this, arguments
+    type = ->
+      context = if this is global then null else this
+      buildInstance context, type, buildArgs context, arguments
+
     type.getName = -> name
     return type
 
