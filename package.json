@@ -1,16 +1,19 @@
 {
   "name": "Builder",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "main": "js/Builder",
+  "scripts": {
+    "build": "coffee -cb -o js src",
+    "postinstall": "npm run clean && npm run build"
+  },
   "dependencies": {
-    "ArrayOf": "aleclarson/ArrayOf#1.0.0",
     "Injectable": "aleclarson/Injectable#1.0.0",
     "NamedFunction": "aleclarson/NamedFunction#2.0.0",
     "Property": "aleclarson/Property#1.1.1",
     "PureObject": "aleclarson/PureObject#1.0.0",
     "Super": "aleclarson/Super#1.0.0",
+    "ValueMapper": "aleclarson/ValueMapper#1.0.0",
     "applyChain": "aleclarson/applyChain#1.0.0",
-    "assert": "aleclarson/assert#1.0.0",
     "assertType": "aleclarson/assertType#2.0.0",
     "bind": "aleclarson/bind#1.0.0",
     "define": "aleclarson/define#1.0.0",
@@ -21,8 +24,7 @@
     "setKind": "aleclarson/setKind#1.0.0",
     "setType": "aleclarson/setType#1.0.0",
     "sync": "aleclarson/sync#1.0.0",
-    "tracer": "aleclarson/tracer#1.0.0",
-    "wrapValue": "aleclarson/wrapValue#1.0.0"
+    "tracer": "aleclarson/tracer#1.0.0"
   },
   "lotus": {
     "plugins": [

@@ -1,98 +1,50 @@
 
 require "isDev"
 
-{ mutable, frozen } = Property = require "Property"
+{mutable, frozen} = Property = require "Property"
 
 NamedFunction = require "NamedFunction"
 emptyFunction = require "emptyFunction"
+ValueMapper = require "ValueMapper"
 PureObject = require "PureObject"
-applyChain = require "applyChain"
 assertType = require "assertType"
-wrapValue = require "wrapValue"
+applyChain = require "applyChain"
 inArray = require "in-array"
 setType = require "setType"
 setKind = require "setKind"
-ArrayOf = require "ArrayOf"
 Tracer = require "tracer"
 isType = require "isType"
 define = require "define"
-assert = require "assert"
 Super = require "Super"
 bind = require "bind"
 sync = require "sync"
 
-PropertyMapper = require "./PropertyMapper"
-
-hasEvents = Symbol "Builder.hasEvents"
-
-module.exports =
-Builder = NamedFunction "Builder", (name, func) ->
-
-  self = Object.create Builder.prototype
-
-  builderProps.define self
-
-  if name
-    assertType name, String
-    self._name = name
-
-  if func
-    assertType func, Function
-    self._kind = Function
-    self._createInstance = ->
-      instance = -> func.apply instance, arguments
-      if isDev then instance.toString = -> func.toString()
-      return instance
-
-  if isDev
-    self._didBuild.push initTypeCount
-    Object.defineProperty self, "_tracer",
-      value: Tracer "Builder.construct()", { skip: 2 }
-
-  return self
-
-builderProps = Property.Map
-
-  _name: null
-
-  _kind: null
-
-  _createInstance: null
-
-  _initInstance: -> []
-
-  _willBuild: -> []
-
-  _didBuild: -> []
-
-  _cachedBuild: null
+injected = require "./injectable"
 
 # The base instance in the inheritance chain
 # must use this type's prototype with 'Object.create'.
 instanceType = null
+instanceID = null
 
-if isDev
+Builder = NamedFunction "Builder", (name) ->
+  assertType name, String if name?
 
-  # The base instance has its '__id' and '__name'
-  # created by keeping a unique identifier for each type.
-  instanceID = null
-  initTypeCount = (type) ->
-    type.count = 0
+  phases =
+    init: []
+    willBuild: []
+    didBuild: []
 
-  instanceProps = Property.Map
-    __id: -> instanceID
-    __name: get: -> @constructor.getName() + "_" + @__id
+  self = Object.create Builder.prototype,
+    _name: {value: name}
+    _kind: {value: no, writable: yes}
+    _phases: {value: phases}
 
-  # These types cannot be inherited from!
-  forbiddenKinds = [
-    String
-    Boolean
-    Number
-    Array
-    Symbol
-    Date
-    RegExp
-  ]
+  isDev and
+  self.didBuild initTypeCount
+
+  return self
+
+module.exports = Builder
 
 define Builder,
 
@@ -106,78 +58,116 @@ define Builder.prototype,
   #       to be used, you must call 'createInstance' manually!
   inherits: (kind) ->
 
-    assert not @_kind, "'kind' is already defined!"
-    assert kind isnt Object, "'Cannot explicitly inherit from Object! The default 'kind' is Object, so just dont call 'inherits'!"
-    assert kind isnt Function, "Cannot explicitly inherit from Function! Must pass a second argument to the Builder constructor!"
-    assert not inArray(forbiddenKinds, kind), -> "Cannot inherit from '#{kind.name}'!"
+    if @_kind isnt no
+      throw Error "'kind' is already defined!"
 
-    if kind isnt null
-      assert kind instanceof Function, "'kind' must be a kind of Function (or null)!"
+    if inArray forbiddenKinds, kind
+      throw Error "Cannot inherit from '#{kind.name}'!"
+
+    unless (kind instanceof Function) or (kind is null)
+      throw Error "'kind' must be a kind of Function (or null)!"
 
     @_kind = kind
-
-    # Allow types to override the default 'createInstance'.
-    @_willBuild.push ->
-      @_createInstance ?=
-        if kind is null then PureObject.create
-        else (args) -> kind.apply null, args
     return
 
   createInstance: (createInstance) ->
 
     assertType createInstance, Function
-    assert not @_createInstance, "'createInstance' is already defined!"
-    assert @_kind, "Must call 'inherits' before 'createInstance'!"
 
-    @_createInstance = (args) ->
-      createInstance.apply null, args
+    if @_createInstance
+      throw Error "'createInstance' has already been called!"
+
+    @_kind = Object if @_kind is no
+    frozen.define this, "_createInstance", {value: createInstance}
     return
 
   trace: ->
-    define this, "_shouldTrace", { value: yes }
+    isDev and @_phases.init.push ->
+      mutable.define this, "__stack", value: Error()
     return
 
   initInstance: (func) ->
     assertType func, Function
-    @_initInstance.push (args) ->
+
+    initInstance = (args) ->
       func.apply this, args
+
+    isDev and initInstance = bind.toString func, initInstance
+    @_phases.init.push initInstance
     return
 
-  defineValues: PropertyMapper { needsValue: yes }
+  defineFunction: (func) ->
+    assertType func, Function
+    @_kind = Function
+    @_createInstance = ->
+      self = -> func.apply self, arguments
+      isDev and self.toString = -> func.toString()
+      return self
+    return
 
-  defineFrozenValues: PropertyMapper { frozen: yes, needsValue: yes }
+  defineValues: (values) ->
+    values = ValueMapper {values, mutable: yes}
+    @_phases.init.push (args) ->
+      values.define this, args
+    return
 
-  defineReactiveValues: PropertyMapper { reactive: yes, needsValue: yes }
+  defineFrozenValues: (values) ->
+    values = ValueMapper {values, frozen: yes}
+    @_phases.init.push (args) ->
+      values.define this, args
+    return
 
-  defineEvents: (events) ->
+  defineReactiveValues: (values) ->
+    values = ValueMapper {values, reactive: yes}
+    @_phases.init.push (args) ->
+      values.define this, args
+    return
 
-    assertType events, Object
+  defineEvents: (eventConfigs) ->
+    assertType eventConfigs, Object
 
-    EventMap = require("./inject/EventMap").get()
-    assert EventMap instanceof Function, "Must inject an 'EventMap' constructor before calling 'this.defineEvents'!"
+    Event = injected.get "Event"
+    unless Event instanceof Function
+      throw Error "'defineEvents' requires an injected 'Event' constructor!"
 
-    kind = @_kind
-    if this[hasEvents] or (kind and kind::[hasEvents])
+    @_phases.init.push ->
+      events = @__events or Object.create null
 
-      @_initInstance.push ->
-        @_events._addEvents events
+      self = this
+      sync.each eventConfigs, (argTypes, key) ->
+        event = Event()
+        events[key] = ->
+          isDev and argTypes and validateArgs arguments, argTypes
+          event.emit.apply null, arguments
+          return
+        frozen.define self, key, {value: event.listenable}
+        return
 
-    else
+      @__events or
+      frozen.define this, "__events", {value: events}
+      return
+    return
 
-      @_didBuild.push (type) ->
-        frozen.define type.prototype, hasEvents, { value: yes }
+  defineListeners: (createListeners) ->
+    assertType createListeners, Function
 
-      @_initInstance.push ->
-        frozen.define this, "_events", { value: EventMap events }
+    Event = injected.get "Event"
+    unless Event instanceof Function
+      throw Error "'defineListeners' requires an injected 'Event' constructor!"
 
-    this[hasEvents] or
-    frozen.define this, hasEvents, { value: yes }
+    @_phases.init.push (args) ->
+      listeners = @__listeners or []
+      onAttach = Event
+        .didAttach (listener) -> listeners.push listener.start()
+        .start()
 
-    @_didBuild.push (type) ->
-      sync.keys events, (eventName) ->
-        frozen.define type.prototype, eventName,
-          value: (maxCalls, onNotify) ->
-            @_events eventName, maxCalls, onNotify
+      createListeners.apply this, args
+      onAttach.detach()
+
+      @__listeners or
+      frozen.define this, "__listeners", {value: listeners}
+      return
+    return
 
   defineProperties: (props) ->
 
@@ -187,7 +177,7 @@ define Builder.prototype,
       assertType prop, Object, key
       return Property prop
 
-    @_initInstance.push ->
+    @_phases.init.push ->
       for key, prop of props
         prop.define this, key
       return
@@ -195,7 +185,7 @@ define Builder.prototype,
 
   definePrototype: (props) ->
     assertType props, Object
-    @_didBuild.push (type) ->
+    @didBuild (type) ->
       for key, prop of props
         prop = { value: prop } if not isType prop, Object
         prop.frozen = yes unless prop.set or prop.writable
@@ -207,17 +197,9 @@ define Builder.prototype,
 
     assertType methods, Object
 
-    prefix = if @_name then @_name + "::" else ""
+    isDev and @_assertUniqueMethodNames methods
 
-    kind = @_kind
-    if isDev
-      for key, method of methods
-        assertType method, Function, prefix + key
-        if kind
-          inherited = Super.findInherited kind, key
-          assert not inherited, "Inherited methods cannot be redefined: '#{prefix + key}'\n\nCall 'overrideMethods' to explicitly override!"
-
-    @_didBuild.push (type) ->
+    @didBuild (type) ->
       for key, method of methods
         mutable.define type.prototype, key, { value: method }
       return
@@ -227,34 +209,23 @@ define Builder.prototype,
 
     assertType methods, Object
 
-    kind = @_kind
-    assert kind, "Must call 'inherits' before 'overrideMethods'!"
+    if @_kind is no
+      throw Error "Must call 'inherits' before 'overrideMethods'!"
 
-    prefix = if @_name then @_name + "::" else ""
+    hasInherited = @_inheritMethods methods
 
-    hasInherited = no
-    for key, method of methods
-      assertType method, Function, prefix + key
-      inherited = Super.findInherited kind, key
-      assert inherited, "Cannot find method to override for: '#{prefix + key}'!"
-      continue if not Super.regex.test method.toString()
-      hasInherited = yes
-      methods[key] = Super inherited, method
-
-    @_didBuild.push (type) ->
-      Super.augment type if hasInherited
+    @didBuild (type) ->
+      hasInherited and Super.augment type
       for key, method of methods
         mutable.define type.prototype, key, { value: method }
       return
     return
 
-  mustOverride: ->
-    console.warn "DEPRECATED: (#{@_name}) Please use 'defineHooks' instead of 'mustOverride'!"
-
+  # TODO: Throw if method name already exists.
   defineHooks: (hooks) ->
     assertType hooks, Object
     name = if @_name then @_name + "::" else ""
-    @_didBuild.push (type) ->
+    @didBuild (type) ->
       for key, defaultValue of hooks
         if defaultValue instanceof Function
           value = defaultValue
@@ -268,79 +239,23 @@ define Builder.prototype,
 
   defineBoundMethods: (methods) ->
     assertType methods, Object
-    @_initInstance.push ->
-      for key, method of methods
-        assertType method, Function, key
-        this[key] = bind.func method, this
-      return
-    return
-
-  bindMethods: (keys) ->
-    console.warn "DEPRECATED: (#{@_name}) Please use 'defineBoundMethods' instead of 'bindMethods'!"
-    assert isType(keys, ArrayOf String), "'bindMethods' must be passed an array of strings!"
-    @_initInstance.push ->
-      meta = { obj: this } if isDev
-      for key in keys
-        meta.key = key if isDev
-        assertType this[key], Function, meta
-        this[key] = bind.method this, key
+    @didBuild (type) ->
+      {prototype} = type
+      sync.each methods, (method, key) ->
+        define prototype, key, get: ->
+          value = bind.func method, this
+          frozen.define this, key, {value}
+          return value
       return
     return
 
   defineGetters: (getters) ->
     assertType getters, Object
-    @_didBuild.push ({ prototype }) ->
-      for key, getter of getters
-        frozen.define prototype, key, { get: getter }
-      return
-    return
-
-  defineLazyGetters: (getters) ->
-    console.warn "DEPRECATED: (#{@_name}) Use 'defineGetters' instead of 'defineLazyGetters'!"
-    assertType getters, Object
-    getters = sync.map getters, (getter) ->
-      return -> getter.call(this).get()
-    @_didBuild.push ({ prototype }) ->
-      for key, getter of getters
-        frozen.define prototype, key, { get: getter }
-      return
-    return
-
-  exposeGetters: (keys) ->
-
-    console.warn "DEPRECATED: (#{@_name}) Please use 'defineGetters' instead of 'exposeGetters'!"
-
-    assertType keys, Array
-
-    props = {}
-    sync.each keys, (key) ->
-      internalKey = "_" + key
-      props[key] = Property
-        get: -> this[internalKey]
-        enumerable: yes
-
-    @_didBuild.push ({ prototype }) ->
-      for key, prop of props
-        prop.define prototype, key
-      return
-    return
-
-  exposeLazyGetters: (keys) ->
-
-    console.warn "DEPRECATED: (#{@_name}) Please use 'defineLazyGetters' instead of 'exposeLazyGetters'!"
-
-    assertType keys, Array
-
-    props = {}
-    sync.each keys, (key) ->
-      internalKey = "_" + key
-      props[key] = Property
-        get: -> this[internalKey].get()
-        enumerable: yes
-
-    @_didBuild.push ({ prototype }) ->
-      for key, prop of props
-        prop.define prototype, key
+    @didBuild (type) ->
+      {prototype} = type
+      for key, get of getters
+        assertType get, Function, key
+        frozen.define prototype, key, {get}
       return
     return
 
@@ -352,7 +267,7 @@ define Builder.prototype,
       options = { value: options } if not isType options, Object
       return Property options
 
-    @_didBuild.push (type) ->
+    @didBuild (type) ->
       for key, prop of props
         prop.define type, key
       return
@@ -367,89 +282,160 @@ define Builder.prototype,
 
   willBuild: (func) ->
     assertType func, Function
-    @_willBuild.push func
+    @_phases.willBuild.push func
     return
 
   didBuild: (func) ->
     assertType func, Function
-    @_didBuild.push func
+    @_phases.didBuild.push func
     return
 
   construct: ->
     @build().apply null, arguments
 
   build: ->
-    return @_cachedBuild if @_cachedBuild
-    applyChain @_willBuild, this
+    applyChain @_phases.willBuild, this
     type = @_createType()
-    setKind type, @_kind if @_kind
-    frozen.define type, "_builder", { value: this } if isDev
-    applyChain @_didBuild, null, [ type ]
-    return @_cachedBuild = type
+    setKind type, @_kind
+    applyChain @_phases.didBuild, null, [type]
+    return type
 
   _createType: ->
     name = @_name or ""
-    createArguments = @__buildArgumentCreator()
-    createInstance = @__buildInstanceCreator()
-    type = NamedFunction name, -> createInstance type, createArguments arguments
+    buildArgs = @__createArgBuilder()
+    buildInstance = @__createInstanceBuilder()
+
+    if isDev
+      assertType buildArgs, Function
+      assertType buildInstance, Function
+      return Function(
+        "buildArgs",
+        "buildInstance",
+        "var type;" +
+        "return type = function #{name}() {\n" +
+        "  var context = this === global ? null : this;\n" +
+        "  return buildInstance(context, type, buildArgs(context, arguments));\n" +
+        "}"
+      ) buildArgs, buildInstance
+
+    type = ->
+      context = if this is global then null else this
+      buildInstance context, type, buildArgs context, arguments
+
+    type.getName = -> name
     return type
+
+  _getBaseCreator: ->
+    defaultKind = @_defaultKind or Object
+
+    if @_kind is no
+      @_kind = defaultKind
+
+    kind = @_kind
+    createInstance = @_createInstance
+
+    unless createInstance
+
+      if kind is defaultKind
+        return @_defaultBaseCreator
+
+      if kind is null
+        createInstance = PureObject.create
+      else createInstance = kind
+
+    return (args) ->
+      instance = createInstance.apply this, args
+      instanceType and setType instance, instanceType
+      return instance
+
+  _defaultBaseCreator: ->
+    Object.create instanceType.prototype
+
+  _assertUniqueMethodNames: (methods) ->
+    prefix = if @_name then @_name + "::" else ""
+    for key, method of methods
+      assertType method, Function, prefix + key
+      continue unless @_kind
+      continue unless inherited = Super.findInherited @_kind, key
+      throw Error "Inherited methods cannot be redefined: '#{prefix + key}'\n\n" +
+                  "Call 'overrideMethods' to explicitly override!"
+    return
+
+  _inheritMethods: (methods) ->
+
+    prefix = if @_name then @_name + "::" else ""
+
+    hasInherited = no
+    for key, method of methods
+      assertType method, Function, prefix + key
+
+      inherited = Super.findInherited @_kind, key
+
+      if not inherited
+        throw Error "Cannot find method to override for: '#{prefix + key}'!"
+
+      if not Super.regex.test method.toString()
+        continue
+
+      hasInherited = yes
+      methods[key] = Super inherited, method
+
+    return hasInherited
 
   # Returns the function responsible for transforming and
   # validating the arguments passed to the constructor.
-  __buildArgumentCreator: ->
+  __createArgBuilder: ->
     emptyFunction.thatReturnsArgument
 
   # Returns the function responsible for initializing
   # each new instance's properties and any other work
   # that should be done before the constructor returns.
-  __buildInstanceCreator: ->
-
-    createBaseObject = @_createInstance
-    createBaseObject =
-      if createBaseObject
-        wrapValue createBaseObject, @__migrateBaseObject
-      else @__createBaseObject
-
-    initInstance = @_initInstance
-    shouldTrace = @_shouldTrace
-
-    return createInstance = (type, args) ->
+  __createInstanceBuilder: ->
+    createInstance = @_getBaseCreator()
+    instPhases = @_phases.init
+    return buildInstance = (context, type, args) ->
 
       if not instanceType
         instanceType = type
-        if isDev
-          instanceID = type.count++
+        isDev and instanceID = type.__count++
 
-      instance = createBaseObject.call null, args
+      instance = createInstance.call context, args
 
       if instanceType
+
+        isDev and
+        frozen.define instance, "__name",
+          value: instanceType.getName() + "_" + instanceID
+
         instanceType = null
-        if isDev
-          instanceProps.define instance
-          instanceID = null
+        isDev and instanceID = null
 
-      if isDev and shouldTrace
-
-        if not instance._tracers
-          frozen.define instance, "_tracers",
-            value: Object.create null
-
-        instance._tracers.init = Tracer @_name + "()"
-
-      applyChain initInstance, instance, [ args ]
+      applyChain instPhases, instance, [ args ]
 
       return instance
 
-  # Sometimes the base object is not created by a
-  # Builder; so we have to set the instance type
-  # here instead of in '_createBaseObject'.
-  __migrateBaseObject: (createInstance) -> (args) ->
-    instance = createInstance.call null, args
-    setType instance, instanceType if instanceType
-    return instance
+#
+# Helpers
+#
 
-  # This is where we "associate" a new instance
-  # with the prototype of the topmost type
-  # in the inheritance chain.
-  __createBaseObject: ->
-    Object.create instanceType.prototype
+if isDev
+
+  initTypeCount = (type) ->
+    mutable.define type, "__count", {value: 0}
+
+  validateArgs = (args, argTypes) ->
+    argNames = Object.keys argTypes
+    for name, index in argNames
+      assertType args[index], argTypes[name], name
+    return
+
+  # These types cannot be inherited from!
+  forbiddenKinds = [
+    String
+    Boolean
+    Number
+    Array
+    Symbol
+    Date
+    RegExp
+  ]
