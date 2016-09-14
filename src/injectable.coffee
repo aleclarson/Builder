@@ -1,11 +1,9 @@
 
-Injectable = require "Injectable"
+InjectableMap = require "InjectableMap"
+Kind = require "Kind"
 
-injectable =
-  Event: Injectable()
+Function.Kind ?= Kind Function
 
-exports.get = (key) ->
-  injectable[key].get()
+module.exports = InjectableMap
 
-exports.inject = (key, value) ->
-  injectable[key].inject value
+  Event: Function.Kind
