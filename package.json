@@ -2,6 +2,9 @@
   "name": "Builder",
   "version": "2.0.0",
   "main": "js/Builder",
+  "plugins": [
+    "lotus-coffee"
+  ],
   "scripts": {
     "build": "coffee -cb -o js src",
     "postinstall": "npm run clean && npm run build"
@@ -21,14 +24,13 @@
     "in-array": "aleclarson/in-array#1.0.0",
     "isDev": "aleclarson/isDev#1.0.0",
     "isType": "aleclarson/isType#1.0.0",
+    "postinstall-build": "0.2.x",
     "setKind": "aleclarson/setKind#1.0.0",
     "setType": "aleclarson/setType#1.0.0",
     "sync": "aleclarson/sync#1.0.0",
     "tracer": "aleclarson/tracer#1.0.0"
   },
-  "lotus": {
-    "plugins": [
-      "lotus-coffee"
-    ]
+  "devDependencies": {
+    "coffee-script": "1.9.x"
   }
 }
