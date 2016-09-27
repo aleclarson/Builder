@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "InjectableMap": "aleclarson/InjectableMap#1.0.0",
+    "Kind": "aleclarson/Kind#1.0.0",
     "NamedFunction": "aleclarson/NamedFunction#2.0.1",
     "Property": "aleclarson/Property#1.1.1",
     "PureObject": "aleclarson/PureObject#1.0.0",
@@ -22,7 +23,7 @@
     "define": "aleclarson/define#1.0.0",
     "emptyFunction": "aleclarson/emptyFunction#1.0.0",
     "in-array": "aleclarson/in-array#1.0.0",
-    "isDev": "aleclarson/isDev#1.0.0",
+    "isDev": "aleclarson/isDev#2.0.0",
     "isType": "aleclarson/isType#1.0.0",
     "postinstall-build": "0.2.x",
     "setKind": "aleclarson/setKind#1.0.0",

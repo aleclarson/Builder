@@ -1,6 +1,4 @@
 
-require "isDev"
-
 {mutable, frozen} = Property = require "Property"
 
 NamedFunction = require "NamedFunction"
@@ -16,6 +14,7 @@ Tracer = require "tracer"
 isType = require "isType"
 define = require "define"
 Super = require "Super"
+isDev = require "isDev"
 bind = require "bind"
 sync = require "sync"
 
@@ -78,7 +77,7 @@ define Builder.prototype,
       throw Error "'createInstance' has already been called!"
 
     @_kind = Object if @_kind is no
-    frozen.define this, "_createInstance", {value: createInstance}
+    mutable.define this, "_createInstance", {value: createInstance}
     return
 
   trace: ->
@@ -140,11 +139,12 @@ define Builder.prototype,
           isDev and argTypes and validateArgs arguments, argTypes
           event.emit.apply null, arguments
           return
+
         frozen.define self, key, {value: event.listenable}
         return
 
-      @__events or
-      frozen.define this, "__events", {value: events}
+      if not @__events
+        frozen.define this, "__events", {value: events}
       return
     return
 
@@ -164,8 +164,8 @@ define Builder.prototype,
       createListeners.apply this, args
       onAttach.detach()
 
-      @__listeners or
-      frozen.define this, "__listeners", {value: listeners}
+      if not @__listeners
+        frozen.define this, "__listeners", {value: listeners}
       return
     return
 
@@ -201,7 +201,7 @@ define Builder.prototype,
 
     @didBuild (type) ->
       for key, method of methods
-        mutable.define type.prototype, key, { value: method }
+        mutable.define type.prototype, key, {value: method}
       return
     return
 
@@ -217,7 +217,7 @@ define Builder.prototype,
     @didBuild (type) ->
       hasInherited and Super.augment type
       for key, method of methods
-        mutable.define type.prototype, key, { value: method }
+        frozen.define type.prototype, key, {value: method}
       return
     return
 
@@ -242,7 +242,7 @@ define Builder.prototype,
     @didBuild (type) ->
       {prototype} = type
       sync.each methods, (method, key) ->
-        define prototype, key, get: ->
+        frozen.define prototype, key, get: ->
           value = bind.func method, this
           frozen.define this, key, {value}
           return value
@@ -302,28 +302,14 @@ define Builder.prototype,
 
   _createType: ->
     name = @_name or ""
+
     buildArgs = @__createArgBuilder()
+    assertType buildArgs, Function
+
     buildInstance = @__createInstanceBuilder()
+    assertType buildInstance, Function
 
-    if isDev
-      assertType buildArgs, Function
-      assertType buildInstance, Function
-      return Function(
-        "buildArgs",
-        "buildInstance",
-        "var type;" +
-        "return type = function #{name}() {\n" +
-        "  var context = this === global ? null : this;\n" +
-        "  return buildInstance(context, type, buildArgs(context, arguments));\n" +
-        "}"
-      ) buildArgs, buildInstance
-
-    type = ->
-      context = if this is global then null else this
-      buildInstance context, type, buildArgs context, arguments
-
-    type.getName = -> name
-    return type
+    return buildType name, buildArgs, buildInstance
 
   _getBaseCreator: ->
     defaultKind = @_defaultKind or Object
@@ -385,7 +371,7 @@ define Builder.prototype,
   # Returns the function responsible for transforming and
   # validating the arguments passed to the constructor.
   __createArgBuilder: ->
-    emptyFunction.thatReturnsArgument
+    return emptyFunction.thatReturnsArgument
 
   # Returns the function responsible for initializing
   # each new instance's properties and any other work
@@ -393,7 +379,7 @@ define Builder.prototype,
   __createInstanceBuilder: ->
     createInstance = @_getBaseCreator()
     instPhases = @_phases.init
-    return buildInstance = (context, type, args) ->
+    return buildInstance = (type, args, context) ->
 
       if not instanceType
         instanceType = type
@@ -403,8 +389,7 @@ define Builder.prototype,
 
       if instanceType
 
-        isDev and
-        frozen.define instance, "__name",
+        isDev and mutable.define instance, "__name",
           value: instanceType.getName() + "_" + instanceID
 
         instanceType = null
@@ -439,3 +424,30 @@ if isDev
     Date
     RegExp
   ]
+
+buildType =
+
+  if isDev then (name, buildArgs, buildInstance) ->
+    return Function(
+      "global",
+      "buildArgs",
+      "buildInstance",
+      "var type;" +
+      "return type = function #{name}() {\n" +
+      "  var context = this === global ? null : this;\n" +
+      "  var args = buildArgs(arguments, context);\n" +
+      "  return buildInstance(type, args, context);\n" +
+      "}"
+    ) global, buildArgs, buildInstance
+
+  else (name, buildArgs, buildInstance) ->
+
+    type = ->
+      context = if this is global then null else this
+      args = buildArgs arguments, context
+      return buildInstance type, args, context
+
+    type.getName = ->
+      return name
+
+    return type
