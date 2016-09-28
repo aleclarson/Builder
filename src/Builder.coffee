@@ -14,6 +14,7 @@ Tracer = require "tracer"
 isType = require "isType"
 define = require "define"
 Super = require "Super"
+Mixin = require "Mixin"
 isDev = require "isDev"
 bind = require "bind"
 sync = require "sync"
@@ -47,9 +48,26 @@ module.exports = Builder
 
 define Builder,
 
-  # The type of the instance that is currently being initialized.
-  building: get: ->
-    return instanceType
+  Mixin: Mixin.create
+    methods: [
+      "initInstance"
+      "defineValues"
+      "defineFrozenValues"
+      "defineReactiveValues"
+      "defineEvents"
+      "defineListeners"
+      "defineProperties"
+      "definePrototype"
+      "defineMethods"
+      "overrideMethods"
+      "defineHooks"
+      "defineBoundMethods"
+      "defineGetters"
+      "defineStatics"
+      "addMixins"
+      "willBuild"
+      "didBuild"
+    ]
 
 define Builder.prototype,
 
@@ -291,7 +309,7 @@ define Builder.prototype,
     return
 
   construct: ->
-    @build().apply null, arguments
+    return @build().apply null, arguments
 
   build: ->
     applyChain @_phases.willBuild, this
