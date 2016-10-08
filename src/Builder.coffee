@@ -64,6 +64,7 @@ define Builder,
       "defineBoundMethods"
       "defineGetters"
       "defineStatics"
+      "addMixin"
       "addMixins"
       "willBuild"
       "didBuild"
@@ -291,11 +292,17 @@ define Builder.prototype,
       return
     return
 
+  addMixin: (mixin, options) ->
+    assertType mixin, Function, "mixin"
+    assertType options, Object.Maybe, "options"
+    mixin this, options or {}
+    return
+
   addMixins: (mixins) ->
     assertType mixins, Array, "mixins"
     for mixin, index in mixins
       assertType mixin, Function, "mixins[" + index + "]"
-      mixin this
+      mixin this, {}
     return
 
   willBuild: (func) ->
