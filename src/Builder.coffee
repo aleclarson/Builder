@@ -381,12 +381,11 @@ define Builder.prototype,
       assertType method, Function, prefix + key
 
       inherited = Super.findInherited @_kind, key
-
       if not inherited
         throw Error "Cannot find method to override for: '#{prefix + key}'!"
 
-      if not Super.regex.test method.toString()
-        continue
+      # Only wrap methods that call their super.
+      continue if 0 > method.toString().indexOf "this.__super"
 
       hasInherited = yes
       methods[key] = Super inherited, method
