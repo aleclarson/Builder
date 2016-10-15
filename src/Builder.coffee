@@ -362,10 +362,14 @@ define Builder.prototype,
   _defaultBaseCreator: ->
     Object.create instanceType.prototype
 
-  _assertUniqueMethodNames: (methods) ->
+  _assertUniqueMethodNames: isDev and (methods) ->
     prefix = if @_name then @_name + "::" else ""
     for key, method of methods
-      assertType method, Function, prefix + key
+
+      continue if method is undefined
+      unless method instanceof Function
+        throw TypeError "'#{prefix + key}' must be a kind of Function!"
+
       continue unless @_kind
       continue unless inherited = Super.findInherited @_kind, key
       throw Error "Inherited methods cannot be redefined: '#{prefix + key}'\n\n" +
