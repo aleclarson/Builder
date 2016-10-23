@@ -245,16 +245,13 @@ define Builder.prototype,
     assertType hooks, Object
     name = if @_name then @_name + "::" else ""
     @didBuild (type) ->
-      for key, defaultValue of hooks
-        if defaultValue instanceof Function
-          value = defaultValue
-        else if isDev
-          value = -> throw Error "Must override '#{name + key}'!"
-        else
-          value = emptyFunction
-        type.prototype[key] = value
-      return
-    return
+      sync.each hooks, (defaultValue, key) ->
+        type.prototype[key] =
+          if defaultValue instanceof Function
+          then defaultValue
+          else if isDev
+          then -> throw Error "Must override '#{name + key}'!"
+          else emptyFunction
 
   defineBoundMethods: (methods) ->
     assertType methods, Object
