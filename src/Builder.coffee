@@ -72,6 +72,9 @@ define Builder,
 
 define Builder.prototype,
 
+  abstract: ->
+    # TODO: Throw when attempting to construct an abstract type.
+
   # NOTE: If the inherited type requires the 'new' keyword
   #       to be used, you must call 'createInstance' manually!
   inherits: (kind) ->
