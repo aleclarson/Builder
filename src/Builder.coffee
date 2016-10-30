@@ -151,7 +151,7 @@ define Builder.prototype,
     unless Event instanceof Function
       throw Error "'defineEvents' requires an injected 'Event' constructor!"
 
-    @_phases.init.push ->
+    @_phases.init.unshift ->
       events = @__events or Object.create null
 
       self = this
