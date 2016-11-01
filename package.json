@@ -10,8 +10,6 @@
     "postinstall": "npm run build"
   },
   "dependencies": {
-    "InjectableMap": "aleclarson/InjectableMap#1.0.0",
-    "Kind": "aleclarson/Kind#1.0.0",
     "Mixin": "aleclarson/Mixin#1.0.0",
     "NamedFunction": "aleclarson/NamedFunction#2.0.1",
     "Property": "aleclarson/Property#1.2.0",
