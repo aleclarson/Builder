@@ -19,8 +19,6 @@ isDev = require "isDev"
 bind = require "bind"
 sync = require "sync"
 
-injected = require "./injectable"
-
 # The base instance in the inheritance chain
 # must use this type's prototype with 'Object.create'.
 instanceType = null
@@ -54,8 +52,6 @@ define Builder,
       "defineValues"
       "defineFrozenValues"
       "defineReactiveValues"
-      "defineEvents"
-      "defineListeners"
       "defineProperties"
       "definePrototype"
       "defineMethods"
@@ -142,53 +138,6 @@ define Builder.prototype,
     values = ValueMapper {values, reactive: yes}
     @_phases.init.push (args) ->
       values.define this, args
-    return
-
-  defineEvents: (eventConfigs) ->
-    assertType eventConfigs, Object
-
-    Event = injected.get "Event"
-    unless Event instanceof Function
-      throw Error "'defineEvents' requires an injected 'Event' constructor!"
-
-    @_phases.init.unshift ->
-      events = @__events or Object.create null
-
-      self = this
-      sync.each eventConfigs, (argTypes, key) ->
-        event = Event()
-        events[key] = ->
-          isDev and argTypes and validateArgs arguments, argTypes
-          event.emit.apply null, arguments
-          return
-
-        frozen.define self, key, {value: event.listenable}
-        return
-
-      if not @__events
-        frozen.define this, "__events", {value: events}
-      return
-    return
-
-  defineListeners: (createListeners) ->
-    assertType createListeners, Function
-
-    Event = injected.get "Event"
-    unless Event instanceof Function
-      throw Error "'defineListeners' requires an injected 'Event' constructor!"
-
-    @_phases.init.push (args) ->
-      listeners = @__listeners or []
-      onAttach = Event
-        .didAttach (listener) -> listeners.push listener.start()
-        .start()
-
-      createListeners.apply this, args
-      onAttach.detach()
-
-      if not @__listeners
-        frozen.define this, "__listeners", {value: listeners}
-      return
     return
 
   defineProperties: (props) ->
@@ -294,8 +243,7 @@ define Builder.prototype,
 
   addMixin: (mixin, options) ->
     assertType mixin, Function, "mixin"
-    assertType options, Object.Maybe, "options"
-    mixin this, options or {}
+    mixin this, options
     return
 
   addMixins: (mixins) ->
@@ -435,12 +383,6 @@ if isDev
 
   initTypeCount = (type) ->
     mutable.define type, "__count", {value: 0}
-
-  validateArgs = (args, argTypes) ->
-    argNames = Object.keys argTypes
-    for name, index in argNames
-      assertType args[index], argTypes[name], name
-    return
 
   # These types cannot be inherited from!
   forbiddenKinds = [
