@@ -44,7 +44,7 @@ Builder = NamedFunction "Builder", (name) ->
 
 module.exports = Builder
 
-define Builder,
+Object.assign Builder,
 
   Mixin: Mixin.create
     methods: [
@@ -66,7 +66,7 @@ define Builder,
       "didBuild"
     ]
 
-define Builder.prototype,
+Object.assign Builder.prototype,
 
   abstract: ->
     # TODO: Throw when attempting to construct an abstract type.
