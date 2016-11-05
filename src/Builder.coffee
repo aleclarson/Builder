@@ -1,4 +1,5 @@
 
+{frozen, hidden, reactive} = require "Property"
 {mutable, frozen} = Property = require "Property"
 
 NamedFunction = require "NamedFunction"
@@ -122,32 +123,53 @@ Object.assign Builder.prototype,
       return self
     return
 
-  defineValues: (values) ->
-    values = ValueMapper {values, mutable: yes}
-    @_phases.init.push (args) ->
-      values.define this, args
-    return
+  defineValues: do ->
 
-  defineFrozenValues: (values) ->
-    values = ValueMapper {values, frozen: yes}
-    @_phases.init.push (args) ->
-      values.define this, args
-    return
+    defineValue = (obj, key, value) ->
+      if value isnt undefined
+        if key.startsWith "_"
+          prop = {value, writable: yes, configurable: yes}
+          Object.defineProperty obj, key, prop
+        else obj[key] = value
+      return
 
-  defineReactiveValues: (values) ->
-    values = ValueMapper {values, reactive: yes}
-    @_phases.init.push (args) ->
-      values.define this, args
-    return
+    return (values) ->
+      mapValues = ValueMapper values, defineValue
+      @_phases.init.push (args) ->
+        mapValues this, args
+      return
+
+  defineFrozenValues: do ->
+
+    defineValue = (obj, key, value) ->
+      if value isnt undefined
+        frozen.define obj, key, {value}
+      return
+
+    return (values) ->
+      mapValues = ValueMapper values, defineValue
+      @_phases.init.push (args) ->
+        mapValues this, args
+      return
+
+  defineReactiveValues: do ->
+
+    defineValue = (obj, key, value) ->
+      if value isnt undefined
+        reactive.define obj, key, {value}
+      return
+
+    return (values) ->
+      mapValues = ValueMapper values, defineValue
+      @_phases.init.push (args) ->
+        mapValues this, args
+      return
 
   defineProperties: (props) ->
-
     assertType props, Object
-
     props = sync.map props, (prop, key) ->
       assertType prop, Object, key
       return Property prop
-
     @_phases.init.push ->
       for key, prop of props
         prop.define this, key
