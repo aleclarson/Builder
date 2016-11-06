@@ -45,27 +45,25 @@ Builder = NamedFunction "Builder", (name) ->
 
 module.exports = Builder
 
-Object.assign Builder,
-
-  Mixin: Mixin.create
-    methods: [
-      "initInstance"
-      "defineValues"
-      "defineFrozenValues"
-      "defineReactiveValues"
-      "defineProperties"
-      "definePrototype"
-      "defineMethods"
-      "overrideMethods"
-      "defineHooks"
-      "defineBoundMethods"
-      "defineGetters"
-      "defineStatics"
-      "addMixin"
-      "addMixins"
-      "willBuild"
-      "didBuild"
-    ]
+Builder.Mixin = Mixin.create
+  methods: [
+    "initInstance"
+    "defineValues"
+    "defineFrozenValues"
+    "defineReactiveValues"
+    "defineProperties"
+    "definePrototype"
+    "defineMethods"
+    "overrideMethods"
+    "defineHooks"
+    "defineBoundMethods"
+    "defineGetters"
+    "defineStatics"
+    "addMixin"
+    "addMixins"
+    "willBuild"
+    "didBuild"
+  ]
 
 Object.assign Builder.prototype,
 
