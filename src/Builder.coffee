@@ -213,17 +213,21 @@ Builder.prototype =
     return
 
   # TODO: Throw if method name already exists.
-  defineHooks: (hooks) ->
-    assertType hooks, Object
-    name = if @_name then @_name + "::" else ""
-    @didBuild (type) ->
-      sync.each hooks, (defaultValue, key) ->
-        type.prototype[key] =
-          if defaultValue instanceof Function
-          then defaultValue
-          else if isDev
-          then -> throw Error "Must override '#{name + key}'!"
-          else emptyFunction
+  defineHooks: do ->
+
+    getDefaultHook = (keyPath) ->
+      if isDev
+      then -> throw Error "Must override '#{keyPath}'!"
+      else emptyFunction
+
+    return (hooks) ->
+      assertType hooks, Object
+      name = if @_name then @_name + "::" else ""
+      @didBuild (type) ->
+        for key, hook of hooks
+          hook ?= getDefaultHook name + key
+          type.prototype[key] = hook
+        return
 
   defineBoundMethods: (methods) ->
     assertType methods, Object
