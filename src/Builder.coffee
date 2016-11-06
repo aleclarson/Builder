@@ -289,6 +289,11 @@ Object.assign Builder.prototype,
     return @build().apply null, arguments
 
   build: ->
+
+    if @_built
+    then throw Error "Cannot build more than once!"
+    else frozen.define this, "_built", {value: yes}
+
     applyChain @_phases.willBuild, this
     type = @_createType()
     setKind type, @_kind
