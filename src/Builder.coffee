@@ -65,7 +65,7 @@ Builder.Mixin = Mixin.create
     "didBuild"
   ]
 
-Object.assign Builder.prototype,
+Builder.prototype =
 
   abstract: ->
     # TODO: Throw when attempting to construct an abstract type.
