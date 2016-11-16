@@ -1,34 +1,32 @@
 {
   "name": "Builder",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "main": "js/Builder",
+  "plugins": [
+    "lotus-coffee"
+  ],
   "scripts": {
-    "build": "coffee -cb -o js src",
-    "postinstall": "npm run clean && npm run build"
+    "build": "coffee-build -v 1.11.x -b -o js src",
+    "postinstall": "npm run build"
   },
   "dependencies": {
-    "Injectable": "aleclarson/Injectable#1.0.0",
-    "NamedFunction": "aleclarson/NamedFunction#2.0.0",
-    "Property": "aleclarson/Property#1.1.1",
-    "PureObject": "aleclarson/PureObject#1.0.0",
-    "Super": "aleclarson/Super#1.0.0",
-    "ValueMapper": "aleclarson/ValueMapper#1.0.0",
-    "applyChain": "aleclarson/applyChain#1.0.0",
-    "assertType": "aleclarson/assertType#2.0.0",
-    "bind": "aleclarson/bind#1.0.0",
-    "define": "aleclarson/define#1.0.0",
+    "Mixin": "aleclarson/Mixin#1.0.0",
+    "NamedFunction": "aleclarson/NamedFunction#2.0.1",
+    "Property": "aleclarson/Property#1.2.1",
+    "PureObject": "aleclarson/PureObject#1.0.1",
+    "Super": "aleclarson/Super#1.1.0",
+    "ValueMapper": "aleclarson/ValueMapper#1.1.0",
+    "applyChain": "aleclarson/applyChain#1.0.1",
+    "assertType": "aleclarson/assertType#2.0.1",
+    "bind": "aleclarson/bind#1.0.1",
+    "define": "aleclarson/define#1.0.1",
     "emptyFunction": "aleclarson/emptyFunction#1.0.0",
     "in-array": "aleclarson/in-array#1.0.0",
-    "isDev": "aleclarson/isDev#1.0.0",
-    "isType": "aleclarson/isType#1.0.0",
+    "isDev": "aleclarson/isDev#2.0.0",
+    "isType": "aleclarson/isType#1.0.1",
     "setKind": "aleclarson/setKind#1.0.0",
     "setType": "aleclarson/setType#1.0.0",
-    "sync": "aleclarson/sync#1.0.0",
+    "sync": "aleclarson/sync#1.0.1",
     "tracer": "aleclarson/tracer#1.0.0"
-  },
-  "lotus": {
-    "plugins": [
-      "lotus-coffee"
-    ]
   }
 }

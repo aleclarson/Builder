@@ -1,6 +1,5 @@
 
-require "isDev"
-
+{frozen, hidden, reactive} = require "Property"
 {mutable, frozen} = Property = require "Property"
 
 NamedFunction = require "NamedFunction"
@@ -16,10 +15,10 @@ Tracer = require "tracer"
 isType = require "isType"
 define = require "define"
 Super = require "Super"
+Mixin = require "Mixin"
+isDev = require "isDev"
 bind = require "bind"
 sync = require "sync"
-
-injected = require "./injectable"
 
 # The base instance in the inheritance chain
 # must use this type's prototype with 'Object.create'.
@@ -46,13 +45,30 @@ Builder = NamedFunction "Builder", (name) ->
 
 module.exports = Builder
 
-define Builder,
+Builder.Mixin = Mixin.create
+  methods: [
+    "initInstance"
+    "defineValues"
+    "defineFrozenValues"
+    "defineReactiveValues"
+    "defineProperties"
+    "definePrototype"
+    "defineMethods"
+    "overrideMethods"
+    "defineHooks"
+    "defineBoundMethods"
+    "defineGetters"
+    "defineStatics"
+    "addMixin"
+    "addMixins"
+    "willBuild"
+    "didBuild"
+  ]
 
-  # The type of the instance that is currently being initialized.
-  building: get: ->
-    return instanceType
+Builder.prototype =
 
-define Builder.prototype,
+  abstract: ->
+    # TODO: Throw when attempting to construct an abstract type.
 
   # NOTE: If the inherited type requires the 'new' keyword
   #       to be used, you must call 'createInstance' manually!
@@ -78,7 +94,7 @@ define Builder.prototype,
       throw Error "'createInstance' has already been called!"
 
     @_kind = Object if @_kind is no
-    frozen.define this, "_createInstance", {value: createInstance}
+    mutable.define this, "_createInstance", {value: createInstance}
     return
 
   trace: ->
@@ -105,78 +121,53 @@ define Builder.prototype,
       return self
     return
 
-  defineValues: (values) ->
-    values = ValueMapper {values, mutable: yes}
-    @_phases.init.push (args) ->
-      values.define this, args
-    return
+  defineValues: do ->
 
-  defineFrozenValues: (values) ->
-    values = ValueMapper {values, frozen: yes}
-    @_phases.init.push (args) ->
-      values.define this, args
-    return
-
-  defineReactiveValues: (values) ->
-    values = ValueMapper {values, reactive: yes}
-    @_phases.init.push (args) ->
-      values.define this, args
-    return
-
-  defineEvents: (eventConfigs) ->
-    assertType eventConfigs, Object
-
-    Event = injected.get "Event"
-    unless Event instanceof Function
-      throw Error "'defineEvents' requires an injected 'Event' constructor!"
-
-    @_phases.init.push ->
-      events = @__events or Object.create null
-
-      self = this
-      sync.each eventConfigs, (argTypes, key) ->
-        event = Event()
-        events[key] = ->
-          isDev and argTypes and validateArgs arguments, argTypes
-          event.emit.apply null, arguments
-          return
-        frozen.define self, key, {value: event.listenable}
-        return
-
-      @__events or
-      frozen.define this, "__events", {value: events}
+    defineValue = (obj, key, value) ->
+      if value isnt undefined
+        if key.startsWith "_"
+          prop = {value, writable: yes, configurable: yes}
+          Object.defineProperty obj, key, prop
+        else obj[key] = value
       return
-    return
 
-  defineListeners: (createListeners) ->
-    assertType createListeners, Function
-
-    Event = injected.get "Event"
-    unless Event instanceof Function
-      throw Error "'defineListeners' requires an injected 'Event' constructor!"
-
-    @_phases.init.push (args) ->
-      listeners = @__listeners or []
-      onAttach = Event
-        .didAttach (listener) -> listeners.push listener.start()
-        .start()
-
-      createListeners.apply this, args
-      onAttach.detach()
-
-      @__listeners or
-      frozen.define this, "__listeners", {value: listeners}
+    return (values) ->
+      mapValues = ValueMapper values, defineValue
+      @_phases.init.push (args) ->
+        mapValues this, args
       return
-    return
+
+  defineFrozenValues: do ->
+
+    defineValue = (obj, key, value) ->
+      if value isnt undefined
+        frozen.define obj, key, {value}
+      return
+
+    return (values) ->
+      mapValues = ValueMapper values, defineValue
+      @_phases.init.push (args) ->
+        mapValues this, args
+      return
+
+  defineReactiveValues: do ->
+
+    defineValue = (obj, key, value) ->
+      if value isnt undefined
+        reactive.define obj, key, {value}
+      return
+
+    return (values) ->
+      mapValues = ValueMapper values, defineValue
+      @_phases.init.push (args) ->
+        mapValues this, args
+      return
 
   defineProperties: (props) ->
-
     assertType props, Object
-
     props = sync.map props, (prop, key) ->
       assertType prop, Object, key
       return Property prop
-
     @_phases.init.push ->
       for key, prop of props
         prop.define this, key
@@ -201,7 +192,7 @@ define Builder.prototype,
 
     @didBuild (type) ->
       for key, method of methods
-        mutable.define type.prototype, key, { value: method }
+        mutable.define type.prototype, key, {value: method}
       return
     return
 
@@ -217,32 +208,33 @@ define Builder.prototype,
     @didBuild (type) ->
       hasInherited and Super.augment type
       for key, method of methods
-        mutable.define type.prototype, key, { value: method }
+        frozen.define type.prototype, key, {value: method}
       return
     return
 
   # TODO: Throw if method name already exists.
-  defineHooks: (hooks) ->
-    assertType hooks, Object
-    name = if @_name then @_name + "::" else ""
-    @didBuild (type) ->
-      for key, defaultValue of hooks
-        if defaultValue instanceof Function
-          value = defaultValue
-        else if isDev
-          value = -> throw Error "Must override '#{name + key}'!"
-        else
-          value = emptyFunction
-        type.prototype[key] = value
-      return
-    return
+  defineHooks: do ->
+
+    getDefaultHook = (keyPath) ->
+      if isDev
+      then -> throw Error "Must override '#{keyPath}'!"
+      else emptyFunction
+
+    return (hooks) ->
+      assertType hooks, Object
+      name = if @_name then @_name + "::" else ""
+      @didBuild (type) ->
+        for key, hook of hooks
+          hook ?= getDefaultHook name + key
+          type.prototype[key] = hook
+        return
 
   defineBoundMethods: (methods) ->
     assertType methods, Object
     @didBuild (type) ->
       {prototype} = type
       sync.each methods, (method, key) ->
-        define prototype, key, get: ->
+        frozen.define prototype, key, get: ->
           value = bind.func method, this
           frozen.define this, key, {value}
           return value
@@ -273,11 +265,16 @@ define Builder.prototype,
       return
     return
 
+  addMixin: (mixin, options) ->
+    assertType mixin, Function, "mixin"
+    mixin this, options
+    return
+
   addMixins: (mixins) ->
     assertType mixins, Array, "mixins"
     for mixin, index in mixins
       assertType mixin, Function, "mixins[" + index + "]"
-      mixin this
+      mixin this, {}
     return
 
   willBuild: (func) ->
@@ -291,9 +288,14 @@ define Builder.prototype,
     return
 
   construct: ->
-    @build().apply null, arguments
+    return @build().apply null, arguments
 
   build: ->
+
+    if @_built
+    then throw Error "Cannot build more than once!"
+    else frozen.define this, "_built", {value: yes}
+
     applyChain @_phases.willBuild, this
     type = @_createType()
     setKind type, @_kind
@@ -302,28 +304,14 @@ define Builder.prototype,
 
   _createType: ->
     name = @_name or ""
+
     buildArgs = @__createArgBuilder()
+    assertType buildArgs, Function
+
     buildInstance = @__createInstanceBuilder()
+    assertType buildInstance, Function
 
-    if isDev
-      assertType buildArgs, Function
-      assertType buildInstance, Function
-      return Function(
-        "buildArgs",
-        "buildInstance",
-        "var type;" +
-        "return type = function #{name}() {\n" +
-        "  var context = this === global ? null : this;\n" +
-        "  return buildInstance(context, type, buildArgs(context, arguments));\n" +
-        "}"
-      ) buildArgs, buildInstance
-
-    type = ->
-      context = if this is global then null else this
-      buildInstance context, type, buildArgs context, arguments
-
-    type.getName = -> name
-    return type
+    return buildType name, buildArgs, buildInstance
 
   _getBaseCreator: ->
     defaultKind = @_defaultKind or Object
@@ -351,10 +339,14 @@ define Builder.prototype,
   _defaultBaseCreator: ->
     Object.create instanceType.prototype
 
-  _assertUniqueMethodNames: (methods) ->
+  _assertUniqueMethodNames: isDev and (methods) ->
     prefix = if @_name then @_name + "::" else ""
     for key, method of methods
-      assertType method, Function, prefix + key
+
+      continue if method is undefined
+      unless method instanceof Function
+        throw TypeError "'#{prefix + key}' must be a kind of Function!"
+
       continue unless @_kind
       continue unless inherited = Super.findInherited @_kind, key
       throw Error "Inherited methods cannot be redefined: '#{prefix + key}'\n\n" +
@@ -370,12 +362,11 @@ define Builder.prototype,
       assertType method, Function, prefix + key
 
       inherited = Super.findInherited @_kind, key
-
       if not inherited
         throw Error "Cannot find method to override for: '#{prefix + key}'!"
 
-      if not Super.regex.test method.toString()
-        continue
+      # Only wrap methods that call their super.
+      continue if 0 > method.toString().indexOf "this.__super"
 
       hasInherited = yes
       methods[key] = Super inherited, method
@@ -385,7 +376,7 @@ define Builder.prototype,
   # Returns the function responsible for transforming and
   # validating the arguments passed to the constructor.
   __createArgBuilder: ->
-    emptyFunction.thatReturnsArgument
+    return emptyFunction.thatReturnsArgument
 
   # Returns the function responsible for initializing
   # each new instance's properties and any other work
@@ -393,7 +384,7 @@ define Builder.prototype,
   __createInstanceBuilder: ->
     createInstance = @_getBaseCreator()
     instPhases = @_phases.init
-    return buildInstance = (context, type, args) ->
+    return buildInstance = (type, args, context) ->
 
       if not instanceType
         instanceType = type
@@ -403,8 +394,7 @@ define Builder.prototype,
 
       if instanceType
 
-        isDev and
-        frozen.define instance, "__name",
+        isDev and mutable.define instance, "__name",
           value: instanceType.getName() + "_" + instanceID
 
         instanceType = null
@@ -423,12 +413,6 @@ if isDev
   initTypeCount = (type) ->
     mutable.define type, "__count", {value: 0}
 
-  validateArgs = (args, argTypes) ->
-    argNames = Object.keys argTypes
-    for name, index in argNames
-      assertType args[index], argTypes[name], name
-    return
-
   # These types cannot be inherited from!
   forbiddenKinds = [
     String
@@ -439,3 +423,30 @@ if isDev
     Date
     RegExp
   ]
+
+buildType =
+
+  if isDev then (name, buildArgs, buildInstance) ->
+    return Function(
+      "global",
+      "buildArgs",
+      "buildInstance",
+      "var type;" +
+      "return type = function #{name}() {\n" +
+      "  var context = this === global ? null : this;\n" +
+      "  var args = buildArgs(arguments, context);\n" +
+      "  return buildInstance(type, args, context);\n" +
+      "}"
+    ) global, buildArgs, buildInstance
+
+  else (name, buildArgs, buildInstance) ->
+
+    type = ->
+      context = if this is global then null else this
+      args = buildArgs arguments, context
+      return buildInstance type, args, context
+
+    type.getName = ->
+      return name
+
+    return type
