@@ -1,5 +1,5 @@
 
-# Builder v2.1.0 ![stable](https://img.shields.io/badge/stability-stable-4EBA0F.svg?style=flat)
+# Builder v2.2.0 ![stable](https://img.shields.io/badge/stability-stable-4EBA0F.svg?style=flat)
 
 A `Builder` is an extensible interface for building factory functions.
 

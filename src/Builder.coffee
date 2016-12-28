@@ -65,7 +65,11 @@ Builder.Mixin = Mixin.create
     "didBuild"
   ]
 
-Builder.prototype =
+#
+# Public Methods
+#
+
+Object.assign Builder.prototype,
 
   abstract: ->
     # TODO: Throw when attempting to construct an abstract type.
@@ -84,6 +88,7 @@ Builder.prototype =
       throw Error "'kind' must be a kind of Function (or null)!"
 
     @_kind = kind
+    @__didInherit kind
     return
 
   createInstance: (createInstance) ->
@@ -297,10 +302,21 @@ Builder.prototype =
     else frozen.define this, "_built", {value: yes}
 
     applyChain @_phases.willBuild, this
+    @__willBuild()
+
     type = @_createType()
     setKind type, @_kind
+
     applyChain @_phases.didBuild, null, [type]
+    @__didBuild type
+
     return type
+
+#
+# Internal Methods
+#
+
+Object.assign Builder.prototype,
 
   _createType: ->
     name = @_name or ""
@@ -327,9 +343,10 @@ Builder.prototype =
       if kind is defaultKind
         return @_defaultBaseCreator
 
-      if kind is null
-        createInstance = PureObject.create
-      else createInstance = kind
+      createInstance =
+        if kind is null
+        then PureObject.create
+        else kind
 
     return (args) ->
       instance = createInstance.apply this, args
@@ -373,6 +390,12 @@ Builder.prototype =
 
     return hasInherited
 
+#
+# Subclass Hooks
+#
+
+Object.assign Builder.prototype,
+
   # Returns the function responsible for transforming and
   # validating the arguments passed to the constructor.
   __createArgBuilder: ->
@@ -403,6 +426,12 @@ Builder.prototype =
       applyChain instPhases, instance, [ args ]
 
       return instance
+
+  __didInherit: emptyFunction
+
+  __willBuild: emptyFunction
+
+  __didBuild: emptyFunction
 
 #
 # Helpers
