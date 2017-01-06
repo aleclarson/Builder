@@ -1,6 +1,6 @@
 {
   "name": "Builder",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "main": "js/Builder",
   "plugins": [
     "lotus-coffee"

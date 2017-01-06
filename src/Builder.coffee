@@ -130,10 +130,9 @@ Object.assign Builder.prototype,
 
     defineValue = (obj, key, value) ->
       if value isnt undefined
-        if key.startsWith "_"
-          prop = {value, writable: yes, configurable: yes}
-          Object.defineProperty obj, key, prop
-        else obj[key] = value
+        prop = {value, writable: yes}
+        prop.enumerable = key.startsWith "_"
+        Object.defineProperty obj, key, prop
       return
 
     return (values) ->
