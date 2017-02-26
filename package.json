@@ -26,7 +26,6 @@
     "isType": "aleclarson/isType#1.0.1",
     "setKind": "aleclarson/setKind#1.0.0",
     "setType": "aleclarson/setType#1.0.0",
-    "sync": "aleclarson/sync#1.0.2",
-    "tracer": "aleclarson/tracer#1.0.0"
+    "sync": "aleclarson/sync#1.0.2"
   }
 }
