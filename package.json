@@ -18,7 +18,7 @@
     "ValueMapper": "aleclarson/ValueMapper#1.1.1",
     "applyChain": "aleclarson/applyChain#1.0.1",
     "assertType": "aleclarson/assertType#2.0.1",
-    "bind": "aleclarson/bind#1.0.1",
+    "bind": "aleclarson/bind#1.0.2",
     "define": "aleclarson/define#1.0.1",
     "emptyFunction": "aleclarson/emptyFunction#1.0.0",
     "in-array": "aleclarson/in-array#1.0.0",
