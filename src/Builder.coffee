@@ -347,7 +347,8 @@ define Builder.prototype,
   _defaultBaseCreator: ->
     Object.create instanceType.prototype
 
-  _assertUniqueMethodNames: isDev and (methods) ->
+  _assertUniqueMethodNames: if isDev then (methods) ->
+    kind = @_kind
     prefix = if @_name then @_name + "::" else ""
     for key, method of methods
 
@@ -355,13 +356,16 @@ define Builder.prototype,
       unless method instanceof Function
         throw TypeError "'#{prefix + key}' must be a kind of Function!"
 
-      continue unless @_kind
-      continue unless inherited = Super.findInherited @_kind, key
+      continue unless kind
+      continue unless inherited = Super.findInherited kind, key
       throw Error "Inherited methods cannot be redefined: '#{prefix + key}'\n\n" +
                   "Call 'overrideMethods' to explicitly override!"
     return
 
   _inheritMethods: (methods) ->
+
+    unless kind = @_kind
+      throw Error "Must have parent type before calling '_inheritMethods'!"
 
     prefix = if @_name then @_name + "::" else ""
 
@@ -369,7 +373,7 @@ define Builder.prototype,
     for key, method of methods
       assertType method, Function, prefix + key
 
-      inherited = Super.findInherited @_kind, key
+      inherited = Super.findInherited kind, key
       if not inherited
         throw Error "Cannot find method to override for: '#{prefix + key}'!"
 
@@ -385,7 +389,7 @@ define Builder.prototype,
 # Subclass Hooks
 #
 
-Object.assign Builder.prototype,
+define Builder.prototype,
 
   # Returns the function responsible for transforming and
   # validating the arguments passed to the constructor.
