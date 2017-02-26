@@ -97,7 +97,6 @@ Object.assign Builder.prototype,
     if @_createInstance
       throw Error "'createInstance' has already been called!"
 
-    @_kind = Object if @_kind is no
     mutable.define this, "_createInstance", {value: createInstance}
     return
 
@@ -299,6 +298,9 @@ Object.assign Builder.prototype,
     then throw Error "Cannot build more than once!"
     else frozen.define this, "_built", {value: yes}
 
+    if @_kind is no
+      @_kind = @_defaultKind
+
     applyChain @_phases.willBuild, this
     @__willBuild()
 
@@ -314,7 +316,9 @@ Object.assign Builder.prototype,
 # Internal Methods
 #
 
-Object.assign Builder.prototype,
+define Builder.prototype,
+
+  _defaultKind: Object
 
   _createType: ->
     name = @_name or ""
@@ -328,23 +332,12 @@ Object.assign Builder.prototype,
     return buildType name, buildArgs, buildInstance
 
   _getBaseCreator: ->
-    defaultKind = @_defaultKind or Object
 
-    if @_kind is no
-      @_kind = defaultKind
-
-    kind = @_kind
     createInstance = @_createInstance
-
-    unless createInstance
-
-      if kind is defaultKind
-        return @_defaultBaseCreator
-
-      createInstance =
-        if kind is null
-        then PureObject.create
-        else kind
+    createInstance ?=
+      if @_kind is @_defaultKind then @_defaultBaseCreator
+      else if @_kind is null then PureObject.create
+      else @_kind
 
     return (args) ->
       instance = createInstance.apply this, args
