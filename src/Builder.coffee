@@ -131,7 +131,7 @@ Object.assign Builder.prototype,
     defineValue = (obj, key, value) ->
       if value isnt undefined
         prop = {value, writable: yes}
-        prop.enumerable = key.startsWith "_"
+        prop.enumerable = not key.startsWith "_"
         Object.defineProperty obj, key, prop
       return
 
