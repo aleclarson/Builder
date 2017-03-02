@@ -345,7 +345,9 @@ define Builder.prototype,
       return instance
 
   _defaultBaseCreator: ->
-    Object.create instanceType.prototype
+    if @constructor isnt instanceType
+    then Object.create instanceType.prototype
+    else this
 
   _assertUniqueMethodNames: if isDev then (methods) ->
     kind = @_kind
