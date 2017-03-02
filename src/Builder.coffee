@@ -11,7 +11,6 @@ applyChain = require "applyChain"
 inArray = require "in-array"
 setType = require "setType"
 setKind = require "setKind"
-Tracer = require "tracer"
 isType = require "isType"
 define = require "define"
 Super = require "Super"
@@ -98,7 +97,6 @@ Object.assign Builder.prototype,
     if @_createInstance
       throw Error "'createInstance' has already been called!"
 
-    @_kind = Object if @_kind is no
     mutable.define this, "_createInstance", {value: createInstance}
     return
 
@@ -300,6 +298,9 @@ Object.assign Builder.prototype,
     then throw Error "Cannot build more than once!"
     else frozen.define this, "_built", {value: yes}
 
+    if @_kind is no
+      @_kind = @_defaultKind
+
     applyChain @_phases.willBuild, this
     @__willBuild()
 
@@ -315,7 +316,9 @@ Object.assign Builder.prototype,
 # Internal Methods
 #
 
-Object.assign Builder.prototype,
+define Builder.prototype,
+
+  _defaultKind: Object
 
   _createType: ->
     name = @_name or ""
@@ -329,23 +332,16 @@ Object.assign Builder.prototype,
     return buildType name, buildArgs, buildInstance
 
   _getBaseCreator: ->
-    defaultKind = @_defaultKind or Object
-
-    if @_kind is no
-      @_kind = defaultKind
 
     kind = @_kind
-    createInstance = @_createInstance
-
-    unless createInstance
-
-      if kind is defaultKind
-        return @_defaultBaseCreator
-
+    unless createInstance = @_createInstance
       createInstance =
         if kind is null
         then PureObject.create
         else kind
+
+    if kind is @_defaultKind
+      return @_defaultBaseCreator
 
     return (args) ->
       instance = createInstance.apply this, args
@@ -353,9 +349,12 @@ Object.assign Builder.prototype,
       return instance
 
   _defaultBaseCreator: ->
-    Object.create instanceType.prototype
+    if @constructor isnt instanceType
+    then Object.create instanceType.prototype
+    else this
 
-  _assertUniqueMethodNames: isDev and (methods) ->
+  _assertUniqueMethodNames: if isDev then (methods) ->
+    kind = @_kind
     prefix = if @_name then @_name + "::" else ""
     for key, method of methods
 
@@ -363,13 +362,16 @@ Object.assign Builder.prototype,
       unless method instanceof Function
         throw TypeError "'#{prefix + key}' must be a kind of Function!"
 
-      continue unless @_kind
-      continue unless inherited = Super.findInherited @_kind, key
+      continue unless kind
+      continue unless inherited = Super.findInherited kind, key
       throw Error "Inherited methods cannot be redefined: '#{prefix + key}'\n\n" +
                   "Call 'overrideMethods' to explicitly override!"
     return
 
   _inheritMethods: (methods) ->
+
+    unless kind = @_kind
+      throw Error "Must have parent type before calling '_inheritMethods'!"
 
     prefix = if @_name then @_name + "::" else ""
 
@@ -377,7 +379,7 @@ Object.assign Builder.prototype,
     for key, method of methods
       assertType method, Function, prefix + key
 
-      inherited = Super.findInherited @_kind, key
+      inherited = Super.findInherited kind, key
       if not inherited
         throw Error "Cannot find method to override for: '#{prefix + key}'!"
 
@@ -393,7 +395,7 @@ Object.assign Builder.prototype,
 # Subclass Hooks
 #
 
-Object.assign Builder.prototype,
+define Builder.prototype,
 
   # Returns the function responsible for transforming and
   # validating the arguments passed to the constructor.
