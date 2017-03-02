@@ -333,11 +333,15 @@ define Builder.prototype,
 
   _getBaseCreator: ->
 
-    createInstance = @_createInstance
-    createInstance ?=
-      if @_kind is @_defaultKind then @_defaultBaseCreator
-      else if @_kind is null then PureObject.create
-      else @_kind
+    kind = @_kind
+    unless createInstance = @_createInstance
+      createInstance =
+        if kind is null
+        then PureObject.create
+        else kind
+
+    if kind is @_defaultKind
+      return @_defaultBaseCreator
 
     return (args) ->
       instance = createInstance.apply this, args
