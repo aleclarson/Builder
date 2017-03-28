@@ -15,16 +15,14 @@
     "Property": "aleclarson/Property#1.2.3",
     "PureObject": "aleclarson/PureObject#1.0.1",
     "Super": "aleclarson/Super#1.1.0",
-    "ValueMapper": "aleclarson/ValueMapper#1.1.1",
-    "applyChain": "aleclarson/applyChain#1.0.1",
     "assertType": "aleclarson/assertType#2.0.1",
     "bind": "aleclarson/bind#1.0.2",
-    "define": "aleclarson/define#1.0.1",
     "emptyFunction": "aleclarson/emptyFunction#1.0.0",
-    "in-array": "aleclarson/in-array#1.0.0",
+    "has": "aleclarson/has#1.0.0",
     "isDev": "aleclarson/isDev#2.0.0",
     "isType": "aleclarson/isType#1.0.1",
     "setKind": "aleclarson/setKind#1.0.0",
+    "setProto": "aleclarson/setProto#1.0.0",
     "setType": "aleclarson/setType#1.0.0",
     "sync": "aleclarson/sync#1.0.2"
   }

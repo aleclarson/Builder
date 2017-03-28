@@ -1,23 +1,22 @@
 
-{frozen, hidden, reactive} = require "Property"
-{mutable, frozen} = Property = require "Property"
+{mutable, frozen, reactive} = Property = require "Property"
 
 NamedFunction = require "NamedFunction"
 emptyFunction = require "emptyFunction"
-ValueMapper = require "ValueMapper"
 PureObject = require "PureObject"
 assertType = require "assertType"
-applyChain = require "applyChain"
-inArray = require "in-array"
+setProto = require "setProto"
 setType = require "setType"
 setKind = require "setKind"
 isType = require "isType"
-define = require "define"
 Super = require "Super"
-Mixin = require "Mixin"
 isDev = require "isDev"
 bind = require "bind"
 sync = require "sync"
+
+PropertyMap = require "./PropertyMap"
+createType = require "./createType"
+PhaseMap = require "./PhaseMap"
 
 # The base instance in the inheritance chain
 # must use this type's prototype with 'Object.create'.
@@ -27,48 +26,24 @@ instanceID = null
 Builder = NamedFunction "Builder", (name) ->
   assertType name, String if name?
 
-  phases =
-    init: []
-    willBuild: []
-    didBuild: []
+  values =
+    _name: name
+    _used: Object.create null
+    _phases: PhaseMap()
+    _values: PropertyMap()
+    _protos: PropertyMap()
+    _statics: PropertyMap()
 
-  self = Object.create Builder.prototype,
-    _name: {value: name}
-    _kind: {value: no, writable: yes}
-    _phases: {value: phases}
+  values[key] = {value} for key, value of values
+  values._kind = {value: no, writable: yes}
 
-  isDev and
-  self.didBuild initTypeCount
-
+  self = Object.create Builder.prototype, values
+  isDev and self._phases.push "didBuild", initTypeCount
   return self
 
 module.exports = Builder
 
-Builder.Mixin = Mixin.create
-  methods: [
-    "initInstance"
-    "defineValues"
-    "defineFrozenValues"
-    "defineReactiveValues"
-    "defineProperties"
-    "definePrototype"
-    "defineMethods"
-    "overrideMethods"
-    "defineHooks"
-    "defineBoundMethods"
-    "defineGetters"
-    "defineStatics"
-    "addMixin"
-    "addMixins"
-    "willBuild"
-    "didBuild"
-  ]
-
-#
-# Public Methods
-#
-
-Object.assign Builder.prototype,
+prototype =
 
   abstract: ->
     # TODO: Throw when attempting to construct an abstract type.
@@ -80,11 +55,12 @@ Object.assign Builder.prototype,
     if @_kind isnt no
       throw Error "'kind' is already defined!"
 
-    if inArray forbiddenKinds, kind
-      throw Error "Cannot inherit from '#{kind.name}'!"
-
     unless (kind instanceof Function) or (kind is null)
       throw Error "'kind' must be a kind of Function (or null)!"
+
+    # Allow subtypes to know if a supertype used a method
+    # that relies on a once-per-prototype mechanism.
+    setProto @_used, kind._used if kind and kind._used
 
     @_kind = kind
     @__didInherit kind
@@ -97,22 +73,12 @@ Object.assign Builder.prototype,
     if @_createInstance
       throw Error "'createInstance' has already been called!"
 
-    mutable.define this, "_createInstance", {value: createInstance}
+    Object.defineProperty this, "_createInstance", {value: createInstance}
     return
 
   trace: ->
-    isDev and @_phases.init.push ->
-      mutable.define this, "__stack", value: Error()
-    return
-
-  initInstance: (func) ->
-    assertType func, Function
-
-    initInstance = (args) ->
-      func.apply this, args
-
-    isDev and initInstance = bind.toString func, initInstance
-    @_phases.init.push initInstance
+    isDev and @_values.push ->
+      Object.defineProperty this, "__stack", value: Error()
     return
 
   defineFunction: (func) ->
@@ -122,171 +88,6 @@ Object.assign Builder.prototype,
       self = -> func.apply self, arguments
       isDev and self.toString = -> func.toString()
       return self
-    return
-
-  defineValues: do ->
-
-    defineValue = (obj, key, value) ->
-      if value isnt undefined
-        prop = {value, writable: yes}
-        prop.enumerable = not key.startsWith "_"
-        Object.defineProperty obj, key, prop
-      return
-
-    return (values) ->
-      mapValues = ValueMapper values, defineValue
-      @_phases.init.push (args) ->
-        mapValues this, args
-      return
-
-  defineFrozenValues: do ->
-
-    defineValue = (obj, key, value) ->
-      if value isnt undefined
-        frozen.define obj, key, {value}
-      return
-
-    return (values) ->
-      mapValues = ValueMapper values, defineValue
-      @_phases.init.push (args) ->
-        mapValues this, args
-      return
-
-  defineReactiveValues: do ->
-
-    defineValue = (obj, key, value) ->
-      if value isnt undefined
-        reactive.define obj, key, {value}
-      return
-
-    return (values) ->
-      mapValues = ValueMapper values, defineValue
-      @_phases.init.push (args) ->
-        mapValues this, args
-      return
-
-  defineProperties: (props) ->
-    assertType props, Object
-    props = sync.map props, (prop, key) ->
-      assertType prop, Object, key
-      return Property prop
-    @_phases.init.push ->
-      for key, prop of props
-        prop.define this, key
-      return
-    return
-
-  definePrototype: (props) ->
-    assertType props, Object
-    @didBuild (type) ->
-      for key, prop of props
-        prop = { value: prop } if not isType prop, Object
-        prop.frozen = yes unless prop.set or prop.writable
-        define type.prototype, key, prop
-      return
-    return
-
-  defineMethods: (methods) ->
-
-    assertType methods, Object
-
-    isDev and @_assertUniqueMethodNames methods
-
-    @didBuild (type) ->
-      for key, method of methods
-        mutable.define type.prototype, key, {value: method}
-      return
-    return
-
-  overrideMethods: (methods) ->
-
-    assertType methods, Object
-
-    if @_kind is no
-      throw Error "Must call 'inherits' before 'overrideMethods'!"
-
-    hasInherited = @_inheritMethods methods
-
-    @didBuild (type) ->
-      hasInherited and Super.augment type
-      for key, method of methods
-        frozen.define type.prototype, key, {value: method}
-      return
-    return
-
-  # TODO: Throw if method name already exists.
-  defineHooks: do ->
-
-    getDefaultHook = (keyPath) ->
-      if isDev
-      then -> throw Error "Must override '#{keyPath}'!"
-      else emptyFunction
-
-    return (hooks) ->
-      assertType hooks, Object
-      name = if @_name then @_name + "::" else ""
-      @didBuild (type) ->
-        for key, hook of hooks
-          hook ?= getDefaultHook name + key
-          type.prototype[key] = hook
-        return
-
-  defineBoundMethods: (methods) ->
-    assertType methods, Object
-    @didBuild (type) ->
-      {prototype} = type
-      sync.each methods, (method, key) ->
-        frozen.define prototype, key, get: ->
-          value = bind.func method, this
-          frozen.define this, key, {value}
-          return value
-      return
-    return
-
-  defineGetters: (getters) ->
-    assertType getters, Object
-    @didBuild (type) ->
-      {prototype} = type
-      for key, get of getters
-        assertType get, Function, key
-        frozen.define prototype, key, {get}
-      return
-    return
-
-  defineStatics: (statics) ->
-
-    assertType statics, Object
-
-    props = sync.map statics, (options, key) ->
-      options = { value: options } if not isType options, Object
-      return Property options
-
-    @didBuild (type) ->
-      for key, prop of props
-        prop.define type, key
-      return
-    return
-
-  addMixin: (mixin, options) ->
-    assertType mixin, Function, "mixin"
-    mixin this, options
-    return
-
-  addMixins: (mixins) ->
-    assertType mixins, Array, "mixins"
-    for mixin, index in mixins
-      assertType mixin, Function, "mixins[" + index + "]"
-      mixin this, {}
-    return
-
-  willBuild: (func) ->
-    assertType func, Function
-    @_phases.willBuild.push func
-    return
-
-  didBuild: (func) ->
-    assertType func, Function
-    @_phases.didBuild.push func
     return
 
   construct: ->
@@ -301,24 +102,230 @@ Object.assign Builder.prototype,
     if @_kind is no
       @_kind = @_defaultKind
 
-    applyChain @_phases.willBuild, this
+    @_phases.apply "willBuild", this
     @__willBuild()
 
     type = @_createType()
     setKind type, @_kind
 
-    applyChain @_phases.didBuild, null, [type]
+    @_protos.apply type.prototype
+    @_statics.apply type
+
+    Object.defineProperties type,
+      displayName: {value: @_name or ""}
+      _used: {value: @_used}
+
+    @_phases.apply "didBuild", null, [type]
     @__didBuild type
 
     return type
 
-#
-# Internal Methods
-#
+### Methods available to mixins ###
+Object.assign prototype, mixinPrototype =
 
-define Builder.prototype,
+  initInstance: (callback) ->
+    assertType callback, Function
+    @_values.push callback
+    return
+
+  createValue: (key, create) ->
+    @_createValue key, create, defineValue
+
+  defineValue: (key, value) ->
+    @_defineValue key, value, defineValue
+
+  createFrozenValue: (key, create) ->
+    @_createValue key, create, defineFrozenValue
+
+  defineFrozenValue: (key, value) ->
+    @_defineValue key, value, defineFrozenValue
+
+  createReactiveValue: (key, create) ->
+    @_createValue key, create, defineReactiveValue
+
+  defineReactiveValue: (key, value) ->
+    @_defineValue key, value, defineReactiveValue
+
+  defineValues: (values) ->
+    @_values.push defineValue, values
+    return
+
+  defineFrozenValues: (values) ->
+    @_values.push defineFrozenValue, values
+    return
+
+  defineReactiveValues: (values) ->
+    @_values.push defineReactiveValue, values
+    return
+
+  defineProperty: (key, prop) ->
+    prop = Property prop
+    @_values.push ->
+      prop.define this, key
+      return
+    return
+
+  defineProperties: (props) ->
+    @_defineProperties @_values, props
+
+  definePrototype: (props) ->
+    @_defineProperties @_protos, props
+
+  defineMethod: (name, method) ->
+    assertType name, String
+    isDev and @_validateMethod name, method
+    @_protos.push -> defineValue this, name, method
+    return
+
+  defineMethods: (methods) ->
+    isDev and @_validateMethods methods
+    @_protos.push defineValue, methods
+    return
+
+  overrideMethods: (methods) ->
+    assertType methods, Object
+
+    if @_kind is no
+      throw Error "Must call 'inherits' before 'overrideMethods'!"
+
+    # Wrap each method that calls `this.__super` and return false if none do.
+    if @_inheritMethods methods
+      @_phases.push "didBuild", Super.augment
+
+    @_protos.push defineValue, methods
+    return
+
+  # TODO: Throw if method name already exists.
+  defineHooks: (methods) ->
+    assertType methods, Object
+    isDev and @_validateMethods methods
+
+    prefix = if @_name then @_name + "::" else ""
+    @_protos.push ->
+      for key, method of methods
+        if method is null
+          if isDev
+          then method = -> throw Error "Must override '#{prefix + key}'!"
+          else method = emptyFunction
+
+        continue unless method
+        defineValue this, key, method
+      return
+    return
+
+  defineBoundMethods: (methods) ->
+    assertType methods, Object
+    @_protos.push ->
+      for key, method of methods
+        defineBoundMethod this, key, method
+      return
+    return
+
+  defineGetters: (getters) ->
+    assertType getters, Object
+    @_protos.push ->
+      for key, get of getters
+        assertType get, Function, key
+        frozen.define this, key, {get}
+      return
+    return
+
+  defineStatics: (statics) ->
+    @_defineProperties @_statics, statics
+
+  addMixin: (mixin, options) ->
+    assertType mixin, Function, "mixin"
+    mixin this, options
+    return
+
+  addMixins: (mixins) ->
+    assertType mixins, Array, "mixins"
+    for mixin, index in mixins
+      assertType mixin, Function, "mixins[" + index + "]"
+      mixin this, {}
+    return
+
+  willBuild: (callback) ->
+    @_phases.push "willBuild", callback
+    return
+
+  didBuild: (callback) ->
+    @_phases.push "didBuild", callback
+    return
+
+### Subclass hooks ###
+Object.assign prototype,
+
+  __didInherit: emptyFunction
+
+  __willBuild: emptyFunction
+
+  __didBuild: emptyFunction
+
+  # Returns the function responsible for transforming and
+  # validating the arguments passed to the constructor.
+  __createArgBuilder: ->
+    return emptyFunction.thatReturnsArgument
+
+  # Returns the function responsible for initializing
+  # each new instance's properties and any other work
+  # that should be done before the constructor returns.
+  __createInstanceBuilder: ->
+    values = @_values
+    createInstance = @_getBaseCreator()
+    return buildInstance = (type, args, context) ->
+
+      unless instanceType
+        instanceType = type
+        isDev and instanceID = type.__count++
+
+      instance = createInstance.call context, args
+
+      if instanceType
+        if isDev
+          Object.defineProperty instance, "__name",
+            value: instanceType.getName() + "_" + instanceID
+          instanceID = null
+        instanceType = null
+
+      values.apply instance, args
+      return instance
+
+### Internal prototype ###
+Object.assign prototype,
 
   _defaultKind: Object
+
+  _needs: (name) ->
+    return no if @_used[name]
+    @_used[name] = yes
+    return yes
+
+  _createValue: (key, create, define) ->
+    @_values.push ->
+      value = create.apply this, arguments
+      define this, key, value
+    return
+
+  _defineValue: (key, value, define) ->
+    @_values.push ->
+      define this, key, value
+    return
+
+  _defineProperties: (values, props) ->
+    assertType values, PropertyMap
+    assertType props, Object
+
+    props = sync.map props, (prop, key) ->
+      prop = {value: prop} unless isType prop, Object
+      assertType prop, Object, key
+      return Property prop
+
+    values.push ->
+      for key, prop of props
+        prop.define this, key
+      return
+    return
 
   _createType: ->
     name = @_name or ""
@@ -329,7 +336,7 @@ define Builder.prototype,
     buildInstance = @__createInstanceBuilder()
     assertType buildInstance, Function
 
-    return buildType name, buildArgs, buildInstance
+    return createType name, buildArgs, buildInstance
 
   _getBaseCreator: ->
 
@@ -353,19 +360,25 @@ define Builder.prototype,
     then Object.create instanceType.prototype
     else this
 
-  _assertUniqueMethodNames: if isDev then (methods) ->
-    kind = @_kind
+  _invalidMethod: if isDev then (name) ->
     prefix = if @_name then @_name + "::" else ""
-    for key, method of methods
+    return TypeError "'#{prefix + key}' must be a kind of Function!"
 
-      continue if method is undefined
-      unless method instanceof Function
-        throw TypeError "'#{prefix + key}' must be a kind of Function!"
+  _validateMethod: if isDev then (name, method) ->
 
-      continue unless kind
-      continue unless inherited = Super.findInherited kind, key
-      throw Error "Inherited methods cannot be redefined: '#{prefix + key}'\n\n" +
-                  "Call 'overrideMethods' to explicitly override!"
+    return unless method
+    unless method instanceof Function
+      throw @_invalidMethod name
+
+    return unless @_kind
+    return unless Super.findInherited @_kind, name
+    throw Error "Cannot redefine an inherited method: '#{prefix + key}'\n\n" +
+                "Call 'overrideMethods' to explicitly override!"
+
+  _validateMethods: if isDev then (methods) ->
+    assertType methods, Object
+    for name, method of methods
+      @_validateMethod name, method
     return
 
   _inheritMethods: (methods) ->
@@ -376,107 +389,49 @@ define Builder.prototype,
     prefix = if @_name then @_name + "::" else ""
 
     hasInherited = no
-    for key, method of methods
-      assertType method, Function, prefix + key
+    for name, method of methods
+      assertType method, Function, prefix + name
 
-      inherited = Super.findInherited kind, key
-      if not inherited
-        throw Error "Cannot find method to override for: '#{prefix + key}'!"
+      unless inherited = Super.findInherited kind, name
+        throw Error "Cannot find method to override for: '#{prefix + name}'!"
 
       # Only wrap methods that call their super.
       continue if 0 > method.toString().indexOf "this.__super"
 
       hasInherited = yes
-      methods[key] = Super inherited, method
+      methods[name] = Super inherited, method
 
     return hasInherited
 
-#
-# Subclass Hooks
-#
+do -> # Ensure the prototype is not enumerable.
+  for key, value of prototype
+    continue if value is undefined
+    Object.defineProperty Builder.prototype, key, {value}
+  return
 
-define Builder.prototype,
-
-  # Returns the function responsible for transforming and
-  # validating the arguments passed to the constructor.
-  __createArgBuilder: ->
-    return emptyFunction.thatReturnsArgument
-
-  # Returns the function responsible for initializing
-  # each new instance's properties and any other work
-  # that should be done before the constructor returns.
-  __createInstanceBuilder: ->
-    createInstance = @_getBaseCreator()
-    instPhases = @_phases.init
-    return buildInstance = (type, args, context) ->
-
-      if not instanceType
-        instanceType = type
-        isDev and instanceID = type.__count++
-
-      instance = createInstance.call context, args
-
-      if instanceType
-
-        isDev and mutable.define instance, "__name",
-          value: instanceType.getName() + "_" + instanceID
-
-        instanceType = null
-        isDev and instanceID = null
-
-      applyChain instPhases, instance, [ args ]
-
-      return instance
-
-  __didInherit: emptyFunction
-
-  __willBuild: emptyFunction
-
-  __didBuild: emptyFunction
+Builder.Mixin = require("Mixin").create
+  methods: Object.keys mixinPrototype
 
 #
 # Helpers
 #
 
-if isDev
+isDev and initTypeCount = (type) ->
+  mutable.define type, "__count", {value: 0}
 
-  initTypeCount = (type) ->
-    mutable.define type, "__count", {value: 0}
+defineValue = (obj, key, value) ->
+  prop = {value, writable: yes}
+  prop.enumerable = not key.startsWith "_"
+  Object.defineProperty obj, key, prop
 
-  # These types cannot be inherited from!
-  forbiddenKinds = [
-    String
-    Boolean
-    Number
-    Array
-    Symbol
-    Date
-    RegExp
-  ]
+defineFrozenValue = (obj, key, value) ->
+  frozen.define obj, key, {value}
 
-buildType =
+defineReactiveValue = (obj, key, value) ->
+  reactive.define obj, key, {value}
 
-  if isDev then (name, buildArgs, buildInstance) ->
-    return Function(
-      "global",
-      "buildArgs",
-      "buildInstance",
-      "var type;" +
-      "return type = function #{name}() {\n" +
-      "  var context = this === global ? null : this;\n" +
-      "  var args = buildArgs(arguments, context);\n" +
-      "  return buildInstance(type, args, context);\n" +
-      "}"
-    ) global, buildArgs, buildInstance
-
-  else (name, buildArgs, buildInstance) ->
-
-    type = ->
-      context = if this is global then null else this
-      args = buildArgs arguments, context
-      return buildInstance type, args, context
-
-    type.getName = ->
-      return name
-
-    return type
+defineBoundMethod = (obj, key, method) ->
+  mutable.define obj, key, get: ->
+    value = bind.func method, this
+    mutable.define this, key, {value}
+    return value
