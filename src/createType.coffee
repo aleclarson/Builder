@@ -2,22 +2,20 @@
 isDev = require "isDev"
 
 if isDev
+  module.exports = do ->
 
-  template = """
-    return function anonymous() {
-      var _c = this === global ? null : this;
-      var _a = createArgs(arguments, _c);
-      return createInstance(arguments.callee, _a, _c);
-    };
-  """
+    template = """
+      return function anonymous() {
+        var args = createArgs(arguments, this);
+        return createInstance(arguments.callee, args, this);
+      };
+    """
 
-  module.exports = (name, createArgs, createInstance) ->
-    createType = Function "createInstance", "createArgs", "global", template.replace "anonymous", name
-    return createType createInstance, createArgs, global
+    return (name, createArgs, createInstance) ->
+      createType = Function "createInstance", "createArgs", template.replace "anonymous", name
+      return createType createInstance, createArgs
 
 else
-
   module.exports = (name, createArgs, createInstance) -> ->
-    context = if this is global then null else this
-    args = createArgs arguments, context
-    return createInstance arguments.callee, args, context
+    args = createArgs arguments, this
+    return createInstance arguments.callee, args, this
