@@ -187,11 +187,24 @@ Object.assign prototype, mixinPrototype =
     if @_kind is no
       throw Error "Must call 'inherits' before 'overrideMethods'!"
 
-    # Wrap each method that calls `this.__super` and return false if none do.
-    if @_inheritMethods methods
-      @_phases.push "didBuild", Super.augment
+    shouldAugment = no
+
+    for key, method of methods
+      continue if method is undefined
+
+      unless method instanceof Function
+        throw TypeError "'#{getMethodPath @_name, key}' must be a kind of Function!"
+
+      unless inherited = Super.findInherited @_kind, key
+        throw Error "Cannot find method to override for: '#{getMethodPath @_name, key}'!"
+
+      # Only wrap methods that call their super.
+      if 0 <= method.toString().indexOf "this.__super"
+        methods[key] = Super inherited, method
+        shouldAugment = yes
 
     @_protos.push defineValue, methods
+    shouldAugment and @_phases.push "didBuild", Super.augment
     return
 
   # TODO: Throw if method name already exists.
@@ -199,12 +212,12 @@ Object.assign prototype, mixinPrototype =
     assertType methods, Object
     isDev and @_validateMethods methods
 
-    prefix = if @_name then @_name + "::" else ""
+    name = @_name
     @_protos.push ->
       for key, method of methods
         if method is null
           if isDev
-          then method = -> throw Error "Must override '#{prefix + key}'!"
+          then method = -> throw Error "Must override '#{getMethodPath name, key}'!"
           else method = emptyFunction
 
         continue unless method
@@ -358,48 +371,23 @@ Object.assign prototype,
       instanceType and setType instance, instanceType
       return instance
 
-  _invalidMethod: if isDev then (name) ->
-    prefix = if @_name then @_name + "::" else ""
-    return TypeError "'#{prefix + key}' must be a kind of Function!"
-
-  _validateMethod: if isDev then (name, method) ->
+  _validateMethod: if isDev then (key, method) ->
 
     return unless method
     unless method instanceof Function
-      throw @_invalidMethod name
+      throw TypeError "'#{getMethodPath @_name, key}' must be a kind of Function!"
 
     return unless @_kind
-    return unless Super.findInherited @_kind, name
-    throw Error "Cannot redefine an inherited method: '#{prefix + key}'\n\n" +
+    return unless Super.findInherited @_kind, key
+
+    throw Error "Cannot redefine an inherited method: '#{getMethodPath @_name, key}'\n\n" +
                 "Call 'overrideMethods' to explicitly override!"
 
   _validateMethods: if isDev then (methods) ->
     assertType methods, Object
-    for name, method of methods
-      @_validateMethod name, method
+    for key, method of methods
+      @_validateMethod key, method
     return
-
-  _inheritMethods: (methods) ->
-
-    unless kind = @_kind
-      throw Error "Must have parent type before calling '_inheritMethods'!"
-
-    prefix = if @_name then @_name + "::" else ""
-
-    hasInherited = no
-    for name, method of methods
-      assertType method, Function, prefix + name
-
-      unless inherited = Super.findInherited kind, name
-        throw Error "Cannot find method to override for: '#{prefix + name}'!"
-
-      # Only wrap methods that call their super.
-      continue if 0 > method.toString().indexOf "this.__super"
-
-      hasInherited = yes
-      methods[name] = Super inherited, method
-
-    return hasInherited
 
 do -> # Ensure the prototype is not enumerable.
   for key, value of prototype
@@ -416,6 +404,11 @@ Builder.Mixin = require("Mixin").create
 
 isDev and initTypeCount = (type) ->
   mutable.define type, "__count", {value: 0}
+
+isDev and getMethodPath = (typeName, methodName) ->
+  if typeName
+  then typeName + "::" + methodName
+  else methodName
 
 defineValue = (obj, key, value) ->
   prop = {value, writable: yes}
