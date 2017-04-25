@@ -3,7 +3,6 @@
 
 NamedFunction = require "NamedFunction"
 emptyFunction = require "emptyFunction"
-PureObject = require "PureObject"
 assertType = require "assertType"
 setProto = require "setProto"
 setType = require "setType"
@@ -272,7 +271,7 @@ Object.assign prototype,
   # that should be done before the constructor returns.
   __createInstanceBuilder: ->
     values = @_values
-    createInstance = @_getBaseCreator()
+    createInstance = @_getInstanceCreator()
     return buildInstance = (type, args, context) ->
 
       unless instanceType
@@ -338,27 +337,26 @@ Object.assign prototype,
 
     return createType name, buildArgs, buildInstance
 
-  _getBaseCreator: ->
+  _rootCreator: ->
+    Object.create instanceType.prototype
 
-    kind = @_kind
+  _getInstanceCreator: ->
+
     unless createInstance = @_createInstance
-      createInstance =
-        if kind is null
-        then PureObject.create
-        else kind
+      kind = @_kind
 
-    if kind is @_defaultKind
-      return @_defaultBaseCreator
+      if kind is null or kind is Object
+        return @_rootCreator
+
+      createInstance =
+        if kind is @_defaultKind
+        then @_defaultCreator or kind
+        else kind
 
     return (args) ->
       instance = createInstance.apply this, args
       instanceType and setType instance, instanceType
       return instance
-
-  _defaultBaseCreator: ->
-    if @constructor isnt instanceType
-    then Object.create instanceType.prototype
-    else this
 
   _invalidMethod: if isDev then (name) ->
     prefix = if @_name then @_name + "::" else ""
