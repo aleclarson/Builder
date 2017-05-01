@@ -1,0 +1,21 @@
+{
+  "name": "Builder",
+  "version": "2.3.0",
+  "main": "js/Builder",
+  "dependencies": {
+    "Mixin": "aleclarson/Mixin#1.0.1",
+    "NamedFunction": "aleclarson/NamedFunction#2.0.1",
+    "Property": "aleclarson/Property#1.2.4",
+    "Super": "aleclarson/Super#1.1.1",
+    "assertType": "aleclarson/assertType#2.0.2",
+    "bind": "aleclarson/bind#1.0.3",
+    "emptyFunction": "aleclarson/emptyFunction#1.0.0",
+    "has": "aleclarson/has#1.0.0",
+    "isDev": "aleclarson/isDev#2.0.0",
+    "isType": "aleclarson/isType#1.0.2",
+    "setKind": "aleclarson/setKind#1.0.0",
+    "setProto": "aleclarson/setProto#1.0.1",
+    "setType": "aleclarson/setType#1.0.0",
+    "sync": "aleclarson/sync#1.0.3"
+  }
+}
